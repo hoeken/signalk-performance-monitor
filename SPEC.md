@@ -135,7 +135,7 @@ Same flow as Feature 2 via `POST /heap-profile` with `{ duration?: seconds, samp
 
 ## Feature 5: File activity profiling
 
-`POST /files-profile` with `{ duration?: seconds, sampleIntervalSeconds?: number }` (default 1 s sampling) starts a bounded watch window that answers "who is writing to disk, and to which files?" — entirely from passive reads, with no strace, no ptrace, and no locks (`FileActivityCapture` in `src/file-activity.ts`, driven by the shared `CaptureManager`). Requires a Linux `/proc` filesystem; other platforms get 501. Each sample collects:
+`POST /files-profile` with `{ duration?: seconds, sampleIntervalSeconds?: number }` (default 100 ms sampling — captures are on-demand and bounded, so the cost only exists mid-capture and buys visibility into short-lived files) starts a bounded watch window that answers "who is writing to disk, and to which files?" — entirely from passive reads, with no strace, no ptrace, and no locks (`FileActivityCapture` in `src/file-activity.ts`, driven by the shared `CaptureManager`). Requires a Linux `/proc` filesystem; other platforms get 501. Each sample collects:
 
 1. **Process totals** — `/proc/self/io` `read_bytes`/`write_bytes`, the anchor every per-file estimate is checked against.
 2. **Open-file inventory** — readdir `/proc/self/fd`, readlink each entry, open flags from `/proc/self/fdinfo` (read/write/append). Regular files only; sockets, pipes, anon inodes, and deleted files are skipped. Files opened mid-capture join the watch set on the next sample.
@@ -162,7 +162,7 @@ All routes registered via `registerWithRouter` directly on the router (`src/rout
 | GET    | `/profile/:id/raw`    | Raw profile as `.json` attachment (opens in Chrome DevTools / speedscope)                                               |
 | DELETE | `/profile/:id`        | Delete a stored profile; 204 on success, 404 if unknown                                                                 |
 | POST   | `/heap-profile`       | Start allocation capture, same shape (`samplingIntervalBytes` instead of `samplingIntervalUs`)                          |
-| POST   | `/files-profile`      | Start file activity capture (`sampleIntervalSeconds`, default 1); 501 without a Linux `/proc`                           |
+| POST   | `/files-profile`      | Start file activity capture (`sampleIntervalSeconds`, default 0.1); 501 without a Linux `/proc`                         |
 
 Behavioral details:
 

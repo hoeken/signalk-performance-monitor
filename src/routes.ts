@@ -29,7 +29,10 @@ import type {
 } from './shared/types'
 
 export const DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES = 32768
-export const DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS = 1
+// File captures are on-demand and bounded, so sample fast: 100ms catches
+// files opened and closed between coarser samples and gives mtime-churn
+// counts real resolution, at a sampling cost that only exists mid-capture.
+export const DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS = 0.1
 
 /**
  * Uploads bypass the server's JSON body parser (the webapp sends

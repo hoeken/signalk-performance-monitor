@@ -245,7 +245,7 @@ describe('HTTP routes', () => {
     const res = await request(app).post('/files-profile').send({})
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ id: 'files-fake' })
-    expect(captures.filesCalls).toEqual([{ durationSeconds: 30, sampleIntervalSeconds: 1 }])
+    expect(captures.filesCalls).toEqual([{ durationSeconds: 30, sampleIntervalSeconds: 0.1 }])
   })
 
   it('POST /files-profile honours duration and sampleIntervalSeconds', async () => {
