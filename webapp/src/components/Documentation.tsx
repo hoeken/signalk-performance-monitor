@@ -143,6 +143,45 @@ export function Documentation() {
           absorbs their cost into its own bucket.
         </p>
       </Panel>
+
+      <Panel title="Opening a profile in another app">
+        <p>
+          The <strong>JSON</strong> download is a standard V8 profile — CPU captures use
+          Chrome&apos;s <code>.cpuprofile</code> format, memory captures the{' '}
+          <code>.heapprofile</code> format — so any tool that reads Chrome profiler output can open
+          it. The one extra <code>signalk-performance-monitor</code> key holds capture metadata;
+          other tools ignore it, and it is what lets <strong>Upload</strong> restore the profile
+          here.
+        </p>
+        <p>
+          <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">
+            speedscope
+          </a>{' '}
+          is the quickest look at a CPU capture: drag the downloaded <code>.json</code> onto the
+          page as-is. Its Left Heavy and Sandwich views merge repeated call paths, which the flame
+          graph here doesn&apos;t do, and the profile never leaves your browser. It cannot read
+          memory captures.
+        </p>
+        <p>
+          Chrome (or Edge) DevTools opens both, but its file pickers filter by extension, so rename
+          the download first: <code>cpu-….json</code> to <code>cpu-….cpuprofile</code>,{' '}
+          <code>heap-….json</code> to <code>heap-….heapprofile</code>. For CPU, open DevTools on any
+          page, then <em>⋮ → More tools → JavaScript Profiler → Load</em>. For memory, use the{' '}
+          <em>Memory</em> panel&apos;s <em>Load</em> button — the capture appears as an allocation
+          sampling profile.
+        </p>
+        <p>
+          VS Code opens both formats after the same rename — just open the file for a sortable
+          table, or install the <em>Flame Chart Visualizer for JavaScript Profiles</em> extension
+          for a flame chart. Function locations point at paths on the server, so jumping to source
+          only works where the code also exists locally.
+        </p>
+        <p>
+          To skip the renaming, copy captures straight off the server: they are stored with the
+          correct extensions in the plugin&apos;s data directory,{' '}
+          <code>~/.signalk/plugin-config-data/signalk-performance-monitor/</code>.
+        </p>
+      </Panel>
     </div>
   )
 }

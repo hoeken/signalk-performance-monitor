@@ -56,7 +56,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('12.3 ms')).toBeInTheDocument()
-    expect(await screen.findByText('Memory')).toBeInTheDocument()
+    expect(await screen.findByText('Memory', { selector: 'td' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Documentation' })).toBeInTheDocument()
   })

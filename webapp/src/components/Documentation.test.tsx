@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { Documentation } from './Documentation'
 
 describe('Documentation', () => {
-  it('renders the three help panels, collapsed by default', () => {
+  it('renders the four help panels, collapsed by default', () => {
     render(<Documentation />)
 
     for (const title of [
       'How to use this plugin',
       'What the terms mean',
       'How to interpret the data',
+      'Opening a profile in another app',
     ]) {
       expect(screen.getByText(title)).toBeInTheDocument()
     }
