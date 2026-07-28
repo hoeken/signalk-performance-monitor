@@ -69,12 +69,16 @@ export interface HttpRequestsResponse {
   aggregate: HttpPathStats[]
 }
 
-/** Per-second rates diffed from `process.resourceUsage()` over the last interval. */
+/**
+ * Per-second rates over the last interval. Disk rates are true bytes/s from
+ * `/proc/self/io` where available (Linux); elsewhere they fall back to
+ * `process.resourceUsage()` 512-byte block counts × 512, an approximation.
+ */
 export interface ResourceUsageMetrics {
-  /** 512-byte blocks read from storage per second (page-cache misses only, so usually 0) */
-  fsReadRate: number
-  /** 512-byte blocks written to storage per second */
-  fsWriteRate: number
+  /** bytes read from storage per second (page-cache misses only, so usually 0) */
+  diskReadRate: number
+  /** bytes written to storage per second */
+  diskWriteRate: number
   /** involuntary context switches per second — a CPU contention indicator */
   involuntaryContextSwitchRate: number
   /** major page faults per second — a memory pressure indicator */
@@ -95,7 +99,7 @@ export interface MetricsSnapshot {
   resources: ResourceUsageMetrics
 }
 
-export type ProfileType = 'cpu' | 'heap'
+export type ProfileType = 'cpu' | 'heap' | 'files'
 
 /**
  * One frame of the aggregated call tree rendered as a flame graph.
@@ -164,7 +168,87 @@ export interface HeapReport {
   flame?: FlameNode
 }
 
-export type ProfileReport = CpuReport | HeapReport
+/**
+ * One file watched during a file-activity capture — discovered as an open
+ * file descriptor of the server process, or as the -wal/-shm sibling of an
+ * open SQLite database.
+ */
+export interface FileActivityFile {
+  path: string
+  /** attribution bucket, same names as the profile report buckets */
+  bucket: string
+  /** open mode observed: read, write, read-write, or append; 'watched' for a discovered sibling never seen open */
+  mode: string
+  kind: 'file' | 'sqlite-db' | 'sqlite-wal' | 'sqlite-shm'
+  /** bytes at the end of the capture */
+  sizeBytes: number
+  /** bytes of growth summed across samples (truncations don't subtract) */
+  growthBytes: number
+  /** samples in which the file's mtime advanced */
+  mtimeChanges: number
+  /** samples in which mtime advanced with no size change — in-place rewrite churn (e.g. a wrapped SQLite WAL) */
+  inPlaceRewrites: number
+}
+
+/**
+ * Per-database write activity read passively from the SQLite WAL-index
+ * (`-shm`) header: transaction counter, WAL frame count, and checkpoints.
+ */
+export interface SqliteActivity {
+  /** main database path; its -wal/-shm siblings are folded into this row */
+  path: string
+  bucket: string
+  /** bytes */
+  pageSize: number
+  /** transactions committed during the capture */
+  commits: number
+  commitsPerSecond: number
+  /** WAL frames appended during the capture */
+  framesWritten: number
+  /** WAL checkpoints observed (frame counter reset) */
+  checkpoints: number
+  /**
+   * frames × (page + 24-byte frame header) + checkpointed pages — a floor
+   * that excludes fsync amplification
+   */
+  estimatedWriteBytes: number
+  /** human-readable findings, e.g. a sustained high commit rate */
+  notes: string[]
+}
+
+export interface FilesAttributionRow {
+  name: string
+  estimatedWriteBytes: number
+  /** share of the process-wide total; the '(unattributed)' row closes the gap */
+  percent: number
+}
+
+export interface FilesReport {
+  id: string
+  type: 'files'
+  capturedAt: string
+  durationMs: number
+  sampleIntervalSeconds: number
+  sampleCount: number
+  /** process-wide storage I/O over the capture window, from /proc/self/io */
+  totals: {
+    writeBytes: number
+    readBytes: number
+    writeBytesPerSecond: number
+    readBytesPerSecond: number
+  }
+  files: FileActivityFile[]
+  databases: SqliteActivity[]
+  /**
+   * Estimated write volume per bucket vs the process total. The
+   * '(unattributed)' row is the honesty check: bytes the per-file model
+   * could not explain (fsync amplification, filesystem metadata, unwatched
+   * writers).
+   */
+  attribution: FilesAttributionRow[]
+}
+
+export type ProfileReport = CpuReport | HeapReport | FilesReport
 
 export interface ProfileListEntry {
   id: string

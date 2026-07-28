@@ -20,6 +20,10 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes)} B`
 }
 
+export function formatBytesRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`
+}
+
 export function formatDateTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso

@@ -47,6 +47,19 @@ describe('App', () => {
         }
         return Promise.resolve(jsonResponse({ id: 'cpu-new' }))
       }
+      if (url.endsWith('/files-profile') && method === 'POST') {
+        profileList = {
+          ...profileList,
+          running: {
+            id: 'files-new',
+            type: 'files',
+            startedAt: '2026-07-28T11:00:00.000Z',
+            durationSeconds: 30,
+            remainingSeconds: 30,
+          },
+        }
+        return Promise.resolve(jsonResponse({ id: 'files-new' }))
+      }
       if (url.includes('/report')) return Promise.resolve(jsonResponse(cpuReportFixture))
       if (method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
       return Promise.resolve(jsonResponse({ error: 'not found' }, 404))
@@ -63,7 +76,8 @@ describe('App', () => {
 
     expect(await screen.findByText('12.3 ms')).toBeInTheDocument()
     expect(await screen.findByText('Memory', { selector: 'td' })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2)
+    expect(await screen.findByText('Files', { selector: 'td' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(3)
     expect(screen.getByRole('heading', { name: 'Documentation' })).toBeInTheDocument()
   })
 
@@ -91,6 +105,24 @@ describe('App', () => {
 
     expect(await screen.findByText(/CPU profiling: 30s remaining/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Profile CPU' })).not.toBeInTheDocument()
+  })
+
+  it('starts a file activity capture from its own button', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Profile Files' }))
+
+    const postCall = fetchMock.mock.calls.find(
+      ([target, init]) =>
+        String(target).endsWith('/files-profile') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(postCall).toBeDefined()
+    expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({ duration: 30 })
+
+    expect(await screen.findByText(/File profiling: 30s remaining/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Profile Files' })).not.toBeInTheDocument()
   })
 
   it('toggles the per-plugin report for a stored profile', async () => {

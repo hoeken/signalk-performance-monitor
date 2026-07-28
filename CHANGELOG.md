@@ -1,3 +1,11 @@
+# v1.3.0
+
+- Byte-accurate disk I/O metrics: `performance.disk.readRate/writeRate` now report true bytes per second from `/proc/self/io` (the kernel's count of bytes the process caused to hit storage) instead of 512-byte block counts, with the block-count estimate kept as a fallback for non-Linux hosts; delta units metadata, webapp tiles, and glossary updated to match
+- File activity profiling: a new "Profile Files" capture watches every file the server has open (from `/proc/self/fd`, with open modes from `fdinfo`) over a bounded window — size growth catches append writers, mtime-without-growth catches in-place churn, and SQLite databases are read passively through their WAL-index (`-shm`) headers for per-database commit rates, WAL frames, checkpoints, and estimated write volume, with a "consider batching" note for sustained per-commit-fsync workloads
+- File activity reports attribute estimated writes per plugin (`plugin-config-data/<plugin>/` paths, node_modules packages, server core) and honesty-check the sum against the kernel's process-wide counter, reporting the gap as an explicit `(unattributed)` row; reports are stored, viewable, downloadable (raw per-sample series as JSON), and deletable like every other capture
+- File activity reports render in two tabs: Summary (attribution, databases, changed files) and Individual Files — every watched file with all of its stats in a sortable, searchable table with a JSON download of the current view, built on the same table machinery as the HTTP request tables
+- New admin-only `POST /files-profile` route (`{ duration?, sampleIntervalSeconds? }`, 501 on non-Linux hosts) sharing the one-capture-at-a-time slot with CPU and memory profiling
+
 # v1.2.0
 
 - HTTP request tracking: a ring buffer of the last 100 requests (method, path with query string, status, duration, response size) plus cumulative per-method+path aggregates (count, average/max/total duration, errors, bytes), observed from the same `http` performance entries as the metrics collector and served by a new admin-only `GET /http-requests` route

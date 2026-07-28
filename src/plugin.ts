@@ -136,7 +136,12 @@ export function createPlugin(app: ServerAPI): Plugin {
     const tick = () => {
       const status = captures?.status()
       if (status) {
-        const kind = status.type === 'heap' ? 'Heap profiling' : 'Profiling'
+        const kind =
+          status.type === 'heap'
+            ? 'Heap profiling'
+            : status.type === 'files'
+              ? 'File profiling'
+              : 'Profiling'
         app.setPluginStatus(`${kind}: ${status.remainingSeconds}s remaining`)
       }
     }
@@ -176,10 +181,16 @@ export function createPlugin(app: ServerAPI): Plugin {
       httpRequests = new HttpRequestTracker()
       httpRequests.start()
 
-      const store = new ProfileStore(app.getDataDirPath(), config.maxStoredProfiles)
+      const dataDir = app.getDataDirPath()
+      const store = new ProfileStore(dataDir, config.maxStoredProfiles)
+      const serverRoot = detectServerRoot()
       captures = new CaptureManager({
         store,
-        bucketOptions: { serverRoot: detectServerRoot() },
+        bucketOptions: { serverRoot },
+        // The data dir is <configDir>/plugin-config-data/<plugin-id>; two
+        // levels up is the Signal K config root that file paths are
+        // attributed against.
+        dataPathOptions: { dataRoot: path.dirname(path.dirname(dataDir)), serverRoot },
         onStatus: onCaptureStatus,
         onError: (error) => app.error(`capture failed: ${String(error)}`),
       })

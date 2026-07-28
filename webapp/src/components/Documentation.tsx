@@ -39,9 +39,11 @@ export function Documentation() {
         <p>
           When a number looks wrong, capture a profile to find out who is responsible. Pick a
           duration long enough to cover the symptom, then <strong>Profile CPU</strong> (where
-          processor time goes) or <strong>Profile Memory</strong> (which code allocates). The server
-          keeps serving throughout — the sampling profiler adds a few percent of overhead only while
-          the capture runs.
+          processor time goes), <strong>Profile Memory</strong> (which code allocates), or{' '}
+          <strong>Profile Files</strong> (which files — and whose — the server is writing). The
+          server keeps serving throughout — the sampling profiler adds a few percent of overhead
+          only while the capture runs, and the file profiler only reads <code>/proc</code> and file
+          metadata.
         </p>
         <p>
           Finished captures appear in the list. <strong>Report</strong> opens the per-plugin
@@ -101,11 +103,12 @@ export function Documentation() {
             traffic is not included.
           </Term>
           <Term name="Disk writes / reads">
-            Storage I/O caused by the server process, counted in the kernel&apos;s 512-byte block
-            units — 2,000 writes/s is roughly 1 MB/s. Reads count only page-cache misses, i.e. data
+            Storage I/O caused by the server process in bytes per second, counted by the kernel
+            (Linux <code>/proc/self/io</code>) — writes coalesced in RAM before reaching disk are
+            not charged, per-commit fsyncs are. Reads count only page-cache misses, i.e. data
             actually fetched from disk, so a steady zero is normal and healthy on a warmed-up
             server. Writes come from logging, plugin databases, and state files; a sustained jump
-            usually means a plugin started writing heavily.
+            usually means a plugin started writing heavily — run a file profile to see which one.
           </Term>
           <Term name="Ctx switches (invol.)">
             How often per second the operating system preempted the server to run something else.
@@ -125,6 +128,24 @@ export function Documentation() {
             Samples the allocating call stack roughly every 32 KiB allocated (by default). It
             measures memory allocated during the capture — including memory freed since — not what
             is currently held.
+          </Term>
+          <Term name="File profile">
+            Watches every file the server has open (from <code>/proc/self/fd</code>) once a second:
+            size growth catches append writers like logs, mtime advancing without growth catches
+            in-place churn, and SQLite databases are read passively via their WAL-index headers —
+            commits, WAL frames, and checkpoints per database, no locks taken. Per-file estimates
+            are summed per plugin and checked against the kernel&apos;s process-wide write counter;
+            the difference is reported as <code>(unattributed)</code> rather than hidden. The
+            report&apos;s Summary tab shows the aggregates; the Individual Files tab lists every
+            watched file — including unchanged ones — as a sortable, searchable table with a JSON
+            download.
+          </Term>
+          <Term name="Commits / WAL frames / checkpoints">
+            A SQLite database in WAL mode appends one frame (a page plus 24-byte header) per changed
+            page to its <code>-wal</code> file on every committed transaction, then periodically
+            copies those frames back into the main database (a checkpoint). Every commit also costs
+            an fsync, so many tiny transactions write far more than the same data batched — a
+            sustained commit rate above 1/s earns a note in the report.
           </Term>
           <Term name="Bucket">
             Who a cost is attributed to, decided by source file: an npm package (usually a plugin),{' '}
@@ -184,7 +205,8 @@ export function Documentation() {
           <code>.heapprofile</code> format — so any tool that reads Chrome profiler output can open
           it. The one extra <code>signalk-performance-monitor</code> key holds capture metadata;
           other tools ignore it, and it is what lets <strong>Upload</strong> restore the profile
-          here.
+          here. File profiles are this plugin&apos;s own format: the download is the raw per-second
+          sample series as JSON, for your own analysis.
         </p>
         <p>
           <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">

@@ -12,8 +12,10 @@ import {
   buildHeapReport,
   type BucketOptions,
   type CpuProfile,
+  type DataPathBucketOptions,
   type SamplingHeapProfile,
 } from './attribution'
+import { FileActivityCapture } from './file-activity'
 import {
   capturedAtFromProfileId,
   embeddedProfileMetaOf,
@@ -38,6 +40,13 @@ export class InvalidProfileError extends Error {
   }
 }
 
+export class FileCaptureUnsupportedError extends Error {
+  constructor() {
+    super('file activity capture requires a Linux /proc filesystem')
+    this.name = 'FileCaptureUnsupportedError'
+  }
+}
+
 export interface CpuCaptureOptions {
   durationSeconds: number
   samplingIntervalUs: number
@@ -46,6 +55,11 @@ export interface CpuCaptureOptions {
 export interface HeapCaptureOptions {
   durationSeconds: number
   samplingIntervalBytes: number
+}
+
+export interface FilesCaptureOptions {
+  durationSeconds: number
+  sampleIntervalSeconds: number
 }
 
 export interface ImportProfileOptions {
@@ -91,6 +105,10 @@ function idFromFilename(filename: string | undefined, type: ProfileType): string
 export interface CaptureManagerOptions {
   store: ProfileStore
   bucketOptions?: BucketOptions
+  /** Attribution roots for file activity captures. */
+  dataPathOptions?: DataPathBucketOptions
+  /** Overridable for tests; defaults to the live /proc/self. */
+  procSelfDir?: string
   /** Called when a capture starts (with its status) and when it ends (with null). */
   onStatus?: (running: RunningCapture | null) => void
   onError?: (error: unknown) => void
@@ -240,6 +258,60 @@ export class CaptureManager {
   }
 
   /**
+   * Start a file activity capture: open-file inventory, per-file stat
+   * deltas, and passive SQLite WAL-index counters, sampled on an interval
+   * and checked against the process-wide /proc/self/io totals. No inspector
+   * session — but it shares the one-capture-at-a-time slot so the UI story
+   * stays simple.
+   */
+  async startFiles(options: FilesCaptureOptions): Promise<string> {
+    if (this.running) throw new CaptureBusyError()
+    if (!FileActivityCapture.isSupported(this.options.procSelfDir)) {
+      throw new FileCaptureUnsupportedError()
+    }
+
+    const capture = new FileActivityCapture({
+      procSelfDir: this.options.procSelfDir,
+      bucketOptions: this.options.dataPathOptions,
+    })
+    await capture.sample() // baseline
+
+    const state = this.beginCapture('files', options.durationSeconds)
+    state.done = this.finishFiles(capture, state, options.sampleIntervalSeconds)
+    return state.id
+  }
+
+  private async finishFiles(
+    capture: FileActivityCapture,
+    state: RunningState,
+    sampleIntervalSeconds: number,
+  ): Promise<void> {
+    try {
+      const endAt = state.startedAt + state.durationSeconds * 1000
+      const intervalMs = sampleIntervalSeconds * 1000
+      let aborted = false
+      while (!aborted && Date.now() < endAt) {
+        const waitMs = Math.min(intervalMs, endAt - Date.now())
+        aborted = await interruptibleSleep(waitMs, state.abort.signal)
+        if (!aborted) await capture.sample()
+      }
+      if (!aborted) {
+        const report = capture.buildReport({
+          id: state.id,
+          capturedAt: new Date(state.startedAt).toISOString(),
+          durationMs: Date.now() - state.startedAt,
+          sampleIntervalSeconds,
+        })
+        await this.options.store.save(report, capture.rawCapture())
+      }
+    } catch (error) {
+      this.options.onError?.(error)
+    } finally {
+      this.endCapture(null, state)
+    }
+  }
+
+  /**
    * Store a previously downloaded raw profile, rebuilding its report.
    * Runs no inspector session, so it is allowed while a capture is running.
    *
@@ -301,9 +373,9 @@ export class CaptureManager {
     return state
   }
 
-  private endCapture(session: Session, state: RunningState): void {
+  private endCapture(session: Session | null, state: RunningState): void {
     try {
-      session.disconnect()
+      session?.disconnect()
     } catch {
       // already disconnected
     }

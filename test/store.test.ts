@@ -9,7 +9,7 @@ import {
   makeProfileId,
   ProfileStore,
 } from '../src/store'
-import type { CpuReport, HeapReport } from '../src/shared/types'
+import type { CpuReport, FilesReport, HeapReport } from '../src/shared/types'
 
 function makeReport(id: string, capturedAt: string): CpuReport {
   return {
@@ -29,6 +29,7 @@ describe('profile ids', () => {
     expect(id).toBe('cpu-2026-07-28T10-15-30-123Z')
     expect(isValidProfileId(id)).toBe(true)
     expect(isValidProfileId(makeProfileId('heap', new Date()))).toBe(true)
+    expect(isValidProfileId(makeProfileId('files', new Date()))).toBe(true)
   })
 
   it('rejects traversal and junk ids', () => {
@@ -43,6 +44,7 @@ describe('profile ids', () => {
     const date = new Date('2026-07-28T10:15:30.123Z')
     expect(capturedAtFromProfileId(makeProfileId('cpu', date))).toBe(date.toISOString())
     expect(capturedAtFromProfileId(makeProfileId('heap', date))).toBe(date.toISOString())
+    expect(capturedAtFromProfileId(makeProfileId('files', date))).toBe(date.toISOString())
     expect(capturedAtFromProfileId('cpu-fake')).toBeNull()
     expect(capturedAtFromProfileId('cpu-2026-99-99T10-15-30-123Z')).toBeNull()
   })
@@ -126,6 +128,34 @@ describe('ProfileStore', () => {
     expect(entries.map((entry) => entry.id).sort()).toEqual(['cpu-a2', 'cpu-a3', 'heap-b1'])
     expect(await store.getReport('cpu-a1')).toBeNull()
     expect(await store.getRaw('cpu-a1')).toBeNull()
+  })
+
+  it('stores file activity reports under their own extension and type', async () => {
+    const store = new ProfileStore(dir, 5)
+    const filesReport: FilesReport = {
+      id: 'files-c1',
+      type: 'files',
+      capturedAt: '2026-07-28T08:00:00.000Z',
+      durationMs: 30000,
+      sampleIntervalSeconds: 1,
+      sampleCount: 31,
+      totals: { writeBytes: 1000, readBytes: 0, writeBytesPerSecond: 33.3, readBytesPerSecond: 0 },
+      files: [],
+      databases: [],
+      attribution: [{ name: '(unattributed)', estimatedWriteBytes: 1000, percent: 100 }],
+    }
+    await store.save(filesReport, { samples: [] })
+
+    const entries = await store.list()
+    expect(entries[0]).toMatchObject({ id: 'files-c1', type: 'files' })
+    const files = await fs.readdir(dir)
+    expect(files).toContain('files-c1.filesprofile')
+    const raw = JSON.parse((await store.getRaw('files-c1'))!.toString()) as Record<string, unknown>
+    expect(raw['signalk-performance-monitor']).toMatchObject({
+      id: 'files-c1',
+      type: 'files',
+      sampleIntervalSeconds: 1,
+    })
   })
 
   it('deletes both files and reports missing ids', async () => {

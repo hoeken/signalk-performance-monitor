@@ -51,8 +51,8 @@ On plugin start, `MetricsCollector` (`src/metrics.ts`) begins collecting and tak
 | `performance.http.requestDuration.p50`         | 〃 durations into a `createHistogram()`, reset each sample         | s           |
 | `performance.http.requestDuration.p99`         | 〃                                                                 | s           |
 | `performance.http.requestDuration.max`         | 〃                                                                 | s           |
-| `performance.disk.readRate`                    | `process.resourceUsage().fsRead` diffed per interval               | Hz          |
-| `performance.disk.writeRate`                   | `process.resourceUsage().fsWrite` diffed per interval              | Hz          |
+| `performance.disk.readRate`                    | `/proc/self/io read_bytes` diffed per interval                     | B/s         |
+| `performance.disk.writeRate`                   | `/proc/self/io write_bytes` diffed per interval                    | B/s         |
 | `performance.cpu.involuntaryContextSwitchRate` | `process.resourceUsage().involuntaryContextSwitches` diffed        | Hz          |
 | `performance.memory.majorPageFaultRate`        | `process.resourceUsage().majorPageFault` diffed                    | Hz          |
 
@@ -60,7 +60,8 @@ Notes:
 
 - All units SI per Signal K convention; a `meta` delta with units and descriptions is emitted once at plugin start (`buildMetaDelta` in `src/deltas.ts`).
 - HTTP timing counts only inbound `HttpRequest` entries (outbound `HttpClient` entries are filtered out) and covers every request handled anywhere in the process — REST, admin UI, webapps — but not WebSocket traffic. Node emits `'http'` performance entries only while an observer is subscribed, so the per-request cost exists only while the plugin runs. Durations report as all zeros in a request-free interval.
-- `process.resourceUsage()` counters are monotonic; each is diffed per interval and divided by wall time into a rate (clamped at 0, like CPU). `fsRead`/`fsWrite` count 512-byte blocks transferred to/from storage (Linux `ru_inblock`/`ru_oublock`), not bytes or syscalls — so 2000 writes/s ≈ 1 MB/s. Reads count only page-cache misses; a warmed-up server reads everything from cache, so a steady 0 is the normal, healthy state.
+- `process.resourceUsage()` counters are monotonic; each is diffed per interval and divided by wall time into a rate (clamped at 0, like CPU).
+- Disk rates are byte-accurate from `/proc/self/io` (`read_bytes`/`write_bytes` — the kernel's count of bytes the process caused to hit the storage layer, charged per clean→dirty page transition, so RAM-coalesced rewrites are nearly free while per-commit fsyncs recharge in full). Where procfs is unavailable (non-Linux), they fall back to `resourceUsage().fsRead`/`fsWrite` 512-byte block counts × 512. Reads count only page-cache misses; a warmed-up server reads everything from cache, so a steady 0 is the normal, healthy state.
 - All metrics publish under the fixed `performance.` path prefix; publishing can be disabled entirely, leaving webapp-only access via the `GET /metrics` route.
 - Publishing as deltas is the integration hook: data browser, `signalk-to-influxdb`/Grafana, and alerting plugins all work with zero additional code.
 - Respects the server's hot-path rules: metric paths are precomputed once at module load; each publish builds a single object literal (`buildMetricsDelta`).
@@ -132,6 +133,19 @@ Each report also carries a `flame` field (`FlameNode` in `src/shared/types.ts`):
 
 Same flow as Feature 2 via `POST /heap-profile` with `{ duration?: seconds, samplingIntervalBytes?: number }`, using `HeapProfiler.startSampling` / `stopSampling` (default sampling interval 32768 bytes). The sampling heap profile tree is walked and every node's `selfSize` runs through the identical URL-bucketing, producing a `HeapReport` (`type: "heap"`, `selfBytes`/`totalBytes` instead of milliseconds). Raw output is stored as `.heapprofile`. Explicitly does **not** expose `takeHeapSnapshot`.
 
+## Feature 5: File activity profiling
+
+`POST /files-profile` with `{ duration?: seconds, sampleIntervalSeconds?: number }` (default 1 s sampling) starts a bounded watch window that answers "who is writing to disk, and to which files?" — entirely from passive reads, with no strace, no ptrace, and no locks (`FileActivityCapture` in `src/file-activity.ts`, driven by the shared `CaptureManager`). Requires a Linux `/proc` filesystem; other platforms get 501. Each sample collects:
+
+1. **Process totals** — `/proc/self/io` `read_bytes`/`write_bytes`, the anchor every per-file estimate is checked against.
+2. **Open-file inventory** — readdir `/proc/self/fd`, readlink each entry, open flags from `/proc/self/fdinfo` (read/write/append). Regular files only; sockets, pipes, anon inodes, and deleted files are skipped. Files opened mid-capture join the watch set on the next sample.
+3. **Per-file stat deltas** — size growth catches append writers (logs, JSON rewrites); mtime advancing with no size change is counted as an in-place rewrite (the signature of a wrapped SQLite WAL).
+4. **SQLite WAL-index counters** — any watched file with a `-shm` sibling is treated as a WAL-mode database and its `-wal`/`-shm` siblings are pulled into the watch set. The wal-index header is read directly from the `-shm` file (no SQLite library): `iChange` (offset 8, one increment per committed transaction), `mxFrame` (offset 16, WAL frames since last checkpoint — a decrease means a checkpoint ran), and the encoded u16 page size (offset 14). The header's two 48-byte copies are compared to reject torn reads, and counter diffs are `>>> 0` for wraparound.
+
+The report (`FilesReport` in `src/shared/types.ts`, stored like every capture with the raw per-sample series as `<id>.filesprofile`) contains: process-wide totals; per-file rows (bucket, mode, kind, size, growth, mtime changes, in-place rewrites); per-database rows (page size, commits + commits/s, frames written, checkpoints, estimated write bytes = frames × (page + 24-byte frame header) + checkpointed pages, and a "consider batching" note at ≥ 1 sustained commit/s — per-commit fsync amplification is the usual hidden cost); and a per-bucket **attribution table honesty-checked against the kernel total** — bytes the per-file model can't explain (fsync amplification, filesystem metadata, unwatched writers) appear as an explicit `(unattributed)` row instead of being hidden.
+
+Path attribution mirrors the profile bucketing, keyed on data paths instead of source URLs (`bucketForDataPath` in `src/attribution.ts`): `plugin-config-data/<plugin>/` → that plugin, `node_modules/<pkg>/` → that package, anything else under the Signal K config root (settings.json, serverstate/, logs) → `signalk-server (core)`, the rest → `(other)`.
+
 ---
 
 ## HTTP API
@@ -148,6 +162,7 @@ All routes registered via `registerWithRouter` directly on the router (`src/rout
 | GET    | `/profile/:id/raw`    | Raw profile as `.json` attachment (opens in Chrome DevTools / speedscope)                                               |
 | DELETE | `/profile/:id`        | Delete a stored profile; 204 on success, 404 if unknown                                                                 |
 | POST   | `/heap-profile`       | Start allocation capture, same shape (`samplingIntervalBytes` instead of `samplingIntervalUs`)                          |
+| POST   | `/files-profile`      | Start file activity capture (`sampleIntervalSeconds`, default 1); 501 without a Linux `/proc`                           |
 
 Behavioral details:
 
@@ -177,11 +192,11 @@ Defined in `src/plugin.ts` with titles, descriptions, and minimums; defaults:
 React single-page app (`webapp/`), built with Vite into static assets under `public/` (auto-mounted at `/signalk-performance-monitor` via the `signalk-webapp` keyword):
 
 - **Stack:** React 18, TypeScript, Vite. Runtime dependencies are React + ReactDOM plus the headless TanStack table core for the request tables (all bundled at build time — nothing beyond `dist/` + `public/` ships in the package); no charting library, no heavyweight UI frameworks.
-- **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU, HTTP request rate + duration p50/p99/max, disk read/write op rates, involuntary context switches, major page faults — polled from `GET /metrics` every 2s.
-- **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU" and "Profile allocations" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
+- **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU, HTTP request rate + duration p50/p99/max, disk read/write byte rates, involuntary context switches, major page faults — polled from `GET /metrics` every 2s.
+- **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU", "Profile Memory", and "Profile Files" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
 - **Profile list** (`ProfileList`) — stored captures with select, raw download, and delete.
-- **HTTP requests** (`HttpRequests`) — tabbed card in its own section below Profiling, polled from `GET /http-requests` every 5s: the last 100 requests and the per-path aggregates as sortable (click a header), searchable tables via the headless `@tanstack/react-table`, styled like every other table. A default-on "Hide this plugin" toggle filters out the webapp's own polling, which would otherwise dominate the latest-requests view.
-- **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket.
+- **HTTP requests** (`HttpRequests`) — tabbed card in its own section below Profiling, polled from `GET /http-requests` every 5s: the last 100 requests and the per-path aggregates as sortable (click a header), searchable tables via the shared `DataTable` component (headless `@tanstack/react-table`), styled like every other table. A default-on "Hide this plugin" toggle filters out the webapp's own polling, which would otherwise dominate the latest-requests view.
+- **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket. File activity reports render through `FilesReportView` in two tabs: **Summary** (process totals, the write-attribution table with the `(unattributed)` honesty row, SQLite database stats — commits/s, WAL frames, checkpoints, batching notes — and the changed-files table, idle open files folded into a count) and **Individual Files** (every watched file with all of its stats in a sortable, searchable table via the shared `DataTable`, with a Download button exporting the current view as JSON; on the Summary tab, Download exports the full report).
 - **Flame graph** (`FlameGraph`) — in-browser icicle flame graph for both report types, built from the report's `flame` tree with no charting library. Click a frame to zoom (ancestors stay as dimmed full-width context), hover or keyboard-focus for a tooltip (value, % of view / % of capture, function, bucket, url), legend above the graph. Frames are colored by attribution bucket: four hues validated for arbitrary adjacency on the app's light surface (signalk core pinned to blue, top packages get orange/aqua/violet), everything else in neutral grays. Frame names render inline only when they measurably fit; identity never relies on color alone (labels, tooltip, and the bucket table below).
 - API client (`webapp/src/api.ts`) maps 401/403 to an "Admin login required" banner; shared types are imported directly from `src/shared/types.ts` so the API contract is compile-time checked.
 
@@ -189,7 +204,7 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 
 - `start(options)`: merge options over defaults, start the metrics collector (plus a baseline sample), create the profile store and capture manager, emit the units meta delta, start the publish interval.
 - `stop()`: clear timers, abort any in-flight capture (discarding it) and disconnect the inspector session, stop the collector, set status "Stopped". Routes answer 503 afterward.
-- `setPluginStatus`: idle → "Monitoring (loop p99: Xms)" (refreshed each publish); capturing → "Profiling: Ns remaining" / "Heap profiling: Ns remaining", ticked every second.
+- `setPluginStatus`: idle → "Monitoring (loop p99: Xms)" (refreshed each publish); capturing → "Profiling: Ns remaining" / "Heap profiling: Ns remaining" / "File profiling: Ns remaining", ticked every second.
 
 ## Security considerations
 
@@ -201,8 +216,9 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 
 - Main thread only; native addon internals appear as `(program)`/unresolved.
 - Sampling at 1ms misses rare sub-millisecond functions; statistically sound for anything that matters at sustained load.
-- One capture at a time (shared across CPU and heap); a plugin restart aborts and discards an in-flight capture.
+- One capture at a time (shared across CPU, heap, and files); a plugin restart aborts and discards an in-flight capture.
 - Report buckets depend on file paths; a plugin that bundles dependencies absorbs their cost into its own bucket (arguably correct).
+- File activity capture is Linux-only (`/proc`), which covers the Raspberry Pi installs it exists for. Its per-database write volume is an estimate — a floor that excludes fsync amplification — which is exactly why the report keeps the `(unattributed)` remainder visible. Deleted-but-open files and sub-sample-interval writers can escape the per-file tables; the process totals still include them.
 
 ## Development Practices
 

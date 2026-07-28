@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
-import type { ProfileReport } from '../../../src/shared/types'
+import type { CpuReport, HeapReport, ProfileReport } from '../../../src/shared/types'
 import { formatBytes, formatDateTime, formatMs } from '../format'
+import { FilesReportView } from './FilesReportView'
 import { FlameGraph } from './FlameGraph'
 
 interface ReportRow {
@@ -10,7 +11,7 @@ interface ReportRow {
   topFunctions: { name: string; url: string; self: number }[]
 }
 
-function toRows(report: ProfileReport): ReportRow[] {
+function toRows(report: CpuReport | HeapReport): ReportRow[] {
   if (report.type === 'cpu') {
     return report.buckets.map((bucket) => ({
       name: bucket.name,
@@ -37,6 +38,10 @@ function toRows(report: ProfileReport): ReportRow[] {
 
 export function ReportView({ report }: { report: ProfileReport }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  if (report.type === 'files') {
+    return <FilesReportView report={report} />
+  }
 
   const toggle = (name: string) => {
     setExpanded((current) => {

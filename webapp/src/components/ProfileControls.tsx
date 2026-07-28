@@ -18,11 +18,16 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
       running.durationSeconds > 0
         ? Math.min(1, 1 - running.remainingSeconds / running.durationSeconds)
         : 0
+    const label =
+      running.type === 'heap'
+        ? 'Memory profiling'
+        : running.type === 'files'
+          ? 'File profiling'
+          : 'CPU profiling'
     return (
       <div className="flex w-full items-center gap-3">
         <span className="text-sm whitespace-nowrap">
-          {running.type === 'heap' ? 'Memory profiling' : 'CPU profiling'}:{' '}
-          {running.remainingSeconds}s remaining
+          {label}: {running.remainingSeconds}s remaining
         </span>
         <progress
           className="progress progress-primary flex-1"
@@ -64,6 +69,13 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
         onClick={() => onStart('heap', duration)}
       >
         Profile Memory
+      </button>
+      <button
+        type="button"
+        className="btn btn-sm btn-primary btn-outline"
+        onClick={() => onStart('files', duration)}
+      >
+        Profile Files
       </button>
       <button
         type="button"

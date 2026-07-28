@@ -9,6 +9,8 @@
  *  - a `PerformanceObserver` on 'http' entries — Node emits one per inbound
  *    request handled anywhere in the process, but only while observed, so
  *    the per-request cost exists only while the plugin runs
+ *  - `/proc/self/io` (diffed) — kernel-counted storage bytes; falls back to
+ *    `process.resourceUsage()` 512-byte block counts on non-Linux hosts
  *  - `process.resourceUsage()` counters (diffed into per-second rates)
  */
 import {
@@ -20,10 +22,13 @@ import {
   type IntervalHistogram,
   type RecordableHistogram,
 } from 'node:perf_hooks'
+import { PROC_SELF, readProcIo, type ProcIoCounters } from './file-activity'
 import type { MetricsSnapshot } from './shared/types'
 
 const NS_PER_SECOND = 1e9
 const US_PER_SECOND = 1e6
+/** resourceUsage().fsRead/fsWrite count 512-byte blocks (Linux ru_inblock/ru_oublock). */
+const FS_BLOCK_BYTES = 512
 
 function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6
@@ -39,8 +44,11 @@ export class MetricsCollector {
   private previousElu: EventLoopUtilization | null = null
   private previousCpu: NodeJS.CpuUsage | null = null
   private previousResourceUsage: NodeJS.ResourceUsage | null = null
+  private previousIo: ProcIoCounters | null = null
   private previousSampleTime = 0
   private latestSnapshot: MetricsSnapshot | null = null
+
+  constructor(private readonly procSelfDir: string = PROC_SELF) {}
 
   start(): void {
     this.histogram = monitorEventLoopDelay({ resolution: 20 })
@@ -66,6 +74,7 @@ export class MetricsCollector {
     this.previousElu = performance.eventLoopUtilization()
     this.previousCpu = process.cpuUsage()
     this.previousResourceUsage = process.resourceUsage()
+    this.previousIo = readProcIo(this.procSelfDir)
     this.previousSampleTime = performance.now()
   }
 
@@ -81,6 +90,7 @@ export class MetricsCollector {
     this.previousElu = null
     this.previousCpu = null
     this.previousResourceUsage = null
+    this.previousIo = null
     this.latestSnapshot = null
   }
 
@@ -134,9 +144,28 @@ export class MetricsCollector {
     const usage = process.resourceUsage()
     const counterRate = (current: number, previous: number | undefined) =>
       round6(Math.max(current - (previous ?? current), 0) / elapsedSeconds)
+
+    // Byte-accurate disk rates from /proc/self/io; the block-count fallback
+    // (× 512) only applies where procfs is unavailable.
+    const io = readProcIo(this.procSelfDir)
+    const diskRates =
+      io && this.previousIo
+        ? {
+            diskReadRate: counterRate(io.readBytes, this.previousIo.readBytes),
+            diskWriteRate: counterRate(io.writeBytes, this.previousIo.writeBytes),
+          }
+        : {
+            diskReadRate: round6(
+              counterRate(usage.fsRead, this.previousResourceUsage?.fsRead) * FS_BLOCK_BYTES,
+            ),
+            diskWriteRate: round6(
+              counterRate(usage.fsWrite, this.previousResourceUsage?.fsWrite) * FS_BLOCK_BYTES,
+            ),
+          }
+    this.previousIo = io
+
     const resources = {
-      fsReadRate: counterRate(usage.fsRead, this.previousResourceUsage?.fsRead),
-      fsWriteRate: counterRate(usage.fsWrite, this.previousResourceUsage?.fsWrite),
+      ...diskRates,
       involuntaryContextSwitchRate: counterRate(
         usage.involuntaryContextSwitches,
         this.previousResourceUsage?.involuntaryContextSwitches,

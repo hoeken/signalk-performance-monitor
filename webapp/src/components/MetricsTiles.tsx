@@ -1,5 +1,5 @@
 import type { MetricsSnapshot } from '../../../src/shared/types'
-import { formatBytes, formatMs, formatPercent, formatRate } from '../format'
+import { formatBytes, formatBytesRate, formatMs, formatPercent, formatRate } from '../format'
 
 interface TileProps {
   label: string
@@ -55,8 +55,8 @@ export function MetricsTiles({ metrics }: { metrics: MetricsSnapshot }) {
       <Tile label="HTTP requests" value={formatRate(metrics.http.requestRate)} />
       <Tile
         label="Disk writes"
-        value={formatRate(metrics.resources.fsWriteRate)}
-        details={[`reads ${formatRate(metrics.resources.fsReadRate)}`]}
+        value={formatBytesRate(metrics.resources.diskWriteRate)}
+        details={[`reads ${formatBytesRate(metrics.resources.diskReadRate)}`]}
       />
       <Tile
         label="Ctx switches (invol.)"

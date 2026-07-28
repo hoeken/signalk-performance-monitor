@@ -1,8 +1,14 @@
+import { promises as fs } from 'node:fs'
 import { createServer, get, type Server } from 'node:http'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { buildMetaDelta, buildMetricsDelta } from '../src/deltas'
 import { MetricsCollector } from '../src/metrics'
 import type { MetricsSnapshot } from '../src/shared/types'
+
+/** A procSelfDir that never exists, forcing the resourceUsage fallback. */
+const NO_PROC = path.join(tmpdir(), 'skpm-no-proc-anywhere')
 
 function busyWait(ms: number): void {
   const until = Date.now() + ms
@@ -40,8 +46,8 @@ describe('MetricsCollector', () => {
       // No HTTP server ran, so the interval is request-free.
       expect(snapshot.http.requestRate).toBe(0)
       expect(snapshot.http.requestDuration).toEqual({ p50: 0, p99: 0, max: 0 })
-      expect(snapshot.resources.fsReadRate).toBeGreaterThanOrEqual(0)
-      expect(snapshot.resources.fsWriteRate).toBeGreaterThanOrEqual(0)
+      expect(snapshot.resources.diskReadRate).toBeGreaterThanOrEqual(0)
+      expect(snapshot.resources.diskWriteRate).toBeGreaterThanOrEqual(0)
       expect(snapshot.resources.involuntaryContextSwitchRate).toBeGreaterThanOrEqual(0)
       expect(snapshot.resources.majorPageFaultRate).toBeGreaterThanOrEqual(0)
       expect(collector.latest()).toBe(snapshot)
@@ -93,7 +99,7 @@ describe('MetricsCollector', () => {
     }
   })
 
-  it('diffs resource usage counters into per-second rates', async () => {
+  it('diffs resource usage counters into per-second rates (block fallback)', async () => {
     const base: NodeJS.ResourceUsage = {
       userCPUTime: 0,
       systemCPUTime: 0,
@@ -123,30 +129,56 @@ describe('MetricsCollector', () => {
         majorPageFault: 400,
       })
       .mockReturnValueOnce({ ...base, fsRead: 0, fsWrite: 0, involuntaryContextSwitches: 0 })
-    const collector = new MetricsCollector()
+    // Without /proc, disk rates fall back to 512-byte block counts × 512.
+    const collector = new MetricsCollector(NO_PROC)
     collector.start()
     try {
       await sleep(100)
       const first = collector.sample()
       // Deltas were +50 reads, +100 writes, +150 switches, +0 faults over the
       // same wall-clock interval, so the rate ratios are exact.
-      expect(first.resources.fsReadRate).toBeGreaterThan(0)
-      expect(first.resources.fsWriteRate).toBeCloseTo(first.resources.fsReadRate * 2, 2)
-      expect(first.resources.involuntaryContextSwitchRate).toBeCloseTo(
-        first.resources.fsReadRate * 3,
-        2,
+      expect(first.resources.diskReadRate).toBeGreaterThan(0)
+      expect(first.resources.diskWriteRate).toBeCloseTo(first.resources.diskReadRate * 2, 2)
+      expect(first.resources.diskReadRate).toBeCloseTo(
+        (first.resources.involuntaryContextSwitchRate / 3) * 512,
+        1,
       )
       expect(first.resources.majorPageFaultRate).toBe(0)
 
       await sleep(20)
       // Counters that go backwards (they shouldn't) clamp to zero, like CPU.
       const second = collector.sample()
-      expect(second.resources.fsReadRate).toBe(0)
-      expect(second.resources.fsWriteRate).toBe(0)
+      expect(second.resources.diskReadRate).toBe(0)
+      expect(second.resources.diskWriteRate).toBe(0)
       expect(second.resources.involuntaryContextSwitchRate).toBe(0)
     } finally {
       collector.stop()
       spy.mockRestore()
+    }
+  })
+
+  it('prefers byte-accurate disk rates from /proc/self/io when available', async () => {
+    const procDir = await fs.mkdtemp(path.join(tmpdir(), 'skpm-proc-'))
+    const writeIo = (readBytes: number, writeBytes: number) =>
+      fs.writeFile(
+        path.join(procDir, 'io'),
+        `rchar: 0\nwchar: 0\nread_bytes: ${readBytes}\nwrite_bytes: ${writeBytes}\n`,
+      )
+    try {
+      await writeIo(1000, 5000)
+      const collector = new MetricsCollector(procDir)
+      collector.start()
+      try {
+        await writeIo(2000, 9000) // +1000 read, +4000 written
+        await sleep(50)
+        const snapshot = collector.sample()
+        expect(snapshot.resources.diskReadRate).toBeGreaterThan(0)
+        expect(snapshot.resources.diskWriteRate).toBeCloseTo(snapshot.resources.diskReadRate * 4, 2)
+      } finally {
+        collector.stop()
+      }
+    } finally {
+      await fs.rm(procDir, { recursive: true, force: true })
     }
   })
 
@@ -189,8 +221,8 @@ describe('delta shaping', () => {
     cpuUtilization: 0.37,
     http: { requestRate: 3.4, requestDuration: { p50: 0.0042, p99: 0.0871, max: 0.1502 } },
     resources: {
-      fsReadRate: 12,
-      fsWriteRate: 45.2,
+      diskReadRate: 12,
+      diskWriteRate: 45.2,
       involuntaryContextSwitchRate: 123.4,
       majorPageFaultRate: 0.2,
     },
@@ -239,8 +271,8 @@ describe('delta shaping', () => {
       'performance.http.requestDuration.p50': 's',
       'performance.http.requestDuration.p99': 's',
       'performance.http.requestDuration.max': 's',
-      'performance.disk.readRate': 'Hz',
-      'performance.disk.writeRate': 'Hz',
+      'performance.disk.readRate': 'B/s',
+      'performance.disk.writeRate': 'B/s',
       'performance.cpu.involuntaryContextSwitchRate': 'Hz',
       'performance.memory.majorPageFaultRate': 'Hz',
     })

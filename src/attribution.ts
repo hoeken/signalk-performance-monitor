@@ -113,6 +113,48 @@ export function bucketForFrame(
   return OTHER_BUCKET
 }
 
+export interface DataPathBucketOptions {
+  /**
+   * The Signal K config directory (e.g. ~/.signalk) — the parent of
+   * plugin-config-data and node_modules on a standard install.
+   */
+  dataRoot?: string
+  /** Same as BucketOptions.serverRoot, for source checkouts. */
+  serverRoot?: string
+}
+
+function isUnder(filePath: string, root: string): boolean {
+  const normalized = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized !== '' && (filePath === normalized || filePath.startsWith(normalized + '/'))
+}
+
+/**
+ * The same attribution as `bucketForFrame`, keyed on data-file paths
+ * instead of source URLs: files under `plugin-config-data/<plugin>/` belong
+ * to that plugin, other files under the Signal K data root (settings.json,
+ * serverstate/, logs) to the server core, node_modules paths to their
+ * package, everything else to `(other)`.
+ */
+export function bucketForDataPath(filePath: string, options: DataPathBucketOptions = {}): string {
+  const normalized = filePath.replace(/\\/g, '/')
+
+  const marker = '/plugin-config-data/'
+  const markerIndex = normalized.lastIndexOf(marker)
+  if (markerIndex !== -1) {
+    const plugin = normalized.slice(markerIndex + marker.length).split('/')[0]
+    if (plugin) return plugin
+  }
+
+  const packageBucket = bucketForFrame(
+    { functionName: '', url: normalized },
+    { serverRoot: options.serverRoot },
+  )
+  if (packageBucket !== OTHER_BUCKET) return packageBucket
+
+  if (options.dataRoot && isUnder(normalized, options.dataRoot)) return SIGNALK_CORE_BUCKET
+  return OTHER_BUCKET
+}
+
 interface FunctionAggregate {
   name: string
   url: string

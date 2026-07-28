@@ -1,59 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from '@tanstack/react-table'
+import { useMemo, useRef, useState } from 'react'
+import { type ColumnDef } from '@tanstack/react-table'
 import type {
   HttpPathStats,
   HttpRequestsResponse,
   RecentHttpRequest,
 } from '../../../src/shared/types'
+import { DataTable, downloadJson, NUMERIC, type ExportRef } from './DataTable'
 import { formatBytes, formatDateTime, formatMillis } from '../format'
 
 /**
  * Tabbed request log: the last 100 requests (query strings kept) and
  * cumulative per-path aggregates (query strings stripped). Sorting and
- * searching run client-side via the headless TanStack table.
+ * searching run client-side via the shared DataTable.
  */
-
-const PAGE_SIZE = 15
 
 /** This plugin's own polling would otherwise dominate the latest-requests view. */
 const SELF_PREFIXES = ['/plugins/signalk-performance-monitor', '/signalk-performance-monitor']
 
 function isSelfRequest(path: string): boolean {
   return SELF_PREFIXES.some((prefix) => path.startsWith(prefix))
-}
-
-/**
- * Numbered pager items: first, last, and current ±1, with 'gap' filling the
- * jumps (e.g. 1 … 4 [5] 6 … 21). Aggregate can reach 500 paths = 20 pages.
- */
-function pageItems(current: number, count: number): (number | 'gap')[] {
-  const pages = [...new Set([0, count - 1, current - 1, current, current + 1])]
-    .filter((page) => page >= 0 && page < count)
-    .sort((a, b) => a - b)
-  const items: (number | 'gap')[] = []
-  for (const [i, page] of pages.entries()) {
-    if (i > 0 && page - pages[i - 1]! > 1) items.push('gap')
-    items.push(page)
-  }
-  return items
-}
-
-/** Marks a column as right-aligned numeric via TanStack's free-form `meta`. */
-const NUMERIC = { numeric: true }
-
-function cellClass(meta: unknown): string | undefined {
-  return (meta as typeof NUMERIC | undefined)?.numeric
-    ? 'text-right tabular-nums whitespace-nowrap'
-    : undefined
 }
 
 function StatusCell({ statusCode }: { statusCode: number }) {
@@ -182,166 +147,6 @@ const aggregateColumns: ColumnDef<HttpPathStats>[] = [
   },
 ]
 
-/** Lets the parent's Download button read the current view without owning the table. */
-type ExportRef = MutableRefObject<(() => unknown[]) | null>
-
-interface RequestTableProps<T> {
-  data: T[]
-  columns: ColumnDef<T>[]
-  initialSorting: SortingState
-  globalFilter: string
-  emptyMessage: string
-  exportRef: ExportRef
-}
-
-function RequestTable<T>({
-  data,
-  columns,
-  initialSorting,
-  globalFilter,
-  emptyMessage,
-  exportRef,
-}: RequestTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>(initialSorting)
-  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: PAGE_SIZE })
-  const table = useReactTable({
-    data,
-    columns,
-    state: { sorting, globalFilter, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
-    globalFilterFn: 'includesString',
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    // The 5s poll replaces `data` on every tick; snapping back to page 1
-    // each time would make later pages unreadable.
-    autoResetPageIndex: false,
-  })
-
-  // Jump back to the first page when the search or sort order changes…
-  useEffect(() => {
-    setPagination((current) => ({ ...current, pageIndex: 0 }))
-  }, [globalFilter, sorting])
-
-  // Keep the parent's Download button pointed at the current sorted+filtered
-  // view (all pages); re-assigned every render so it never goes stale.
-  useEffect(() => {
-    exportRef.current = () => table.getPrePaginationRowModel().rows.map((row) => row.original)
-  })
-
-  // …and clamp to the last page when rows disappear from under us.
-  const pageCount = table.getPageCount()
-  useEffect(() => {
-    if (pageCount > 0 && pagination.pageIndex >= pageCount) {
-      setPagination((current) => ({ ...current, pageIndex: pageCount - 1 }))
-    }
-  }, [pageCount, pagination.pageIndex])
-
-  const rows = table.getRowModel().rows
-  if (rows.length === 0) {
-    return <p className="text-sm text-base-content/60">{emptyMessage}</p>
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="table table-sm">
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                const sorted = header.column.getIsSorted()
-                return (
-                  <th
-                    key={header.id}
-                    scope="col"
-                    className={cellClass(header.column.columnDef.meta)}
-                    aria-sort={
-                      sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : undefined
-                    }
-                  >
-                    <button
-                      type="button"
-                      className="cursor-pointer whitespace-nowrap font-semibold hover:text-base-content"
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      <span aria-hidden="true">
-                        {sorted === 'asc' ? ' ▲' : sorted === 'desc' ? ' ▼' : ''}
-                      </span>
-                    </button>
-                  </th>
-                )
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className={cellClass(cell.column.columnDef.meta)}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {pageCount > 1 ? (
-        <div className="mt-2 flex items-center justify-end gap-3">
-          <span className="text-xs text-base-content/60">
-            {table.getFilteredRowModel().rows.length.toLocaleString()} rows
-          </span>
-          <div className="join">
-            <button
-              type="button"
-              className="btn join-item btn-xs"
-              aria-label="Previous page"
-              disabled={!table.getCanPreviousPage()}
-              onClick={() => table.previousPage()}
-            >
-              «
-            </button>
-            {pageItems(pagination.pageIndex, pageCount).map((item, index) =>
-              item === 'gap' ? (
-                <button
-                  key={`gap-${index}`}
-                  type="button"
-                  className="btn join-item btn-xs"
-                  disabled
-                >
-                  …
-                </button>
-              ) : (
-                <button
-                  key={item}
-                  type="button"
-                  className={`btn join-item btn-xs ${item === pagination.pageIndex ? 'btn-active' : ''}`}
-                  aria-label={`Page ${item + 1}`}
-                  aria-current={item === pagination.pageIndex ? 'page' : undefined}
-                  onClick={() => table.setPageIndex(item)}
-                >
-                  {item + 1}
-                </button>
-              ),
-            )}
-            <button
-              type="button"
-              className="btn join-item btn-xs"
-              aria-label="Next page"
-              disabled={!table.getCanNextPage()}
-              onClick={() => table.nextPage()}
-            >
-              »
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 const TABS = [
   { id: 'recent', label: 'Latest' },
   { id: 'aggregate', label: 'Aggregate' },
@@ -357,16 +162,12 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
 
   // The current view as shown: sorted, searched, self-filtered — but not paginated.
   const handleDownload = () => {
-    const rows = exportRef.current?.() ?? []
-    const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
     // Same filesystem-safe timestamp style as the stored profile ids.
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    anchor.download = `http-requests-${tab === 'recent' ? 'latest' : 'aggregate'}-${stamp}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    downloadJson(
+      exportRef.current?.() ?? [],
+      `http-requests-${tab === 'recent' ? 'latest' : 'aggregate'}-${stamp}.json`,
+    )
   }
 
   const recent = useMemo(
@@ -431,7 +232,7 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
             </div>
             {/* Keyed so each tab keeps its own sort/page state instead of inheriting the other's. */}
             {tab === 'recent' ? (
-              <RequestTable
+              <DataTable
                 key="recent"
                 data={recent}
                 columns={recentColumns}
@@ -441,7 +242,7 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
                 exportRef={exportRef}
               />
             ) : (
-              <RequestTable
+              <DataTable
                 key="aggregate"
                 data={aggregate}
                 columns={aggregateColumns}

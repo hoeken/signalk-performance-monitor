@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { cpuReportFixture } from '../fixtures'
+import { cpuReportFixture, filesReportFixture } from '../fixtures'
 import { ReportView } from './ReportView'
 
 // Bucket names also appear in the flame graph's legend and frames, so
@@ -72,5 +72,44 @@ describe('ReportView', () => {
     render(<ReportView report={{ ...cpuReportFixture, flame: undefined }} />)
     expect(screen.queryByRole('group', { name: 'Flame graph' })).not.toBeInTheDocument()
     expect(screen.getByText(/predates flame graphs/)).toBeInTheDocument()
+  })
+
+  it('renders a file activity report with totals, attribution, and databases', () => {
+    render(<ReportView report={filesReportFixture} />)
+
+    expect(screen.getByText(/File activity profile/)).toBeInTheDocument()
+    expect(screen.getByText('1.5 MB')).toBeInTheDocument() // process write total
+
+    const attribution = within(
+      screen.getByRole('heading', { name: 'Write attribution' }).parentElement as HTMLElement,
+    )
+    expect(attribution.getByText('maintenance-tracker')).toBeInTheDocument()
+    expect(attribution.getByText('67.7%')).toBeInTheDocument()
+    expect(within(attribution.getByRole('table')).getByText('(unattributed)')).toBeInTheDocument()
+
+    const databases = within(
+      screen.getByRole('heading', { name: 'SQLite databases' }).parentElement as HTMLElement,
+    )
+    expect(databases.getByText(/maintenance\.db$/)).toBeInTheDocument()
+    expect(databases.getByText('8.00')).toBeInTheDocument() // commits/s
+    expect(databases.getByText(/consider batching/)).toBeInTheDocument()
+
+    const files = within(
+      screen.getByRole('heading', { name: 'Open files' }).parentElement as HTMLElement,
+    )
+    expect(files.getByText(/maintenance\.db-wal/)).toBeInTheDocument()
+    expect(files.getByText(/courseInfo\.json/)).toBeInTheDocument()
+    // settings.json and the idle main db file fold into the idle count.
+    expect(files.queryByText(/settings\.json/)).not.toBeInTheDocument()
+    expect(
+      files.getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          /2 more open files saw no changes/.test(element.textContent ?? ''),
+      ),
+    ).toBeInTheDocument()
+
+    // No flame graph or top-function machinery for file reports.
+    expect(screen.queryByRole('group', { name: 'Flame graph' })).not.toBeInTheDocument()
   })
 })

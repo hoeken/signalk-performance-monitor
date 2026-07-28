@@ -12,8 +12,10 @@
 import type { IRouter, Request, Response } from 'express'
 import {
   CaptureBusyError,
+  FileCaptureUnsupportedError,
   InvalidProfileError,
   type CpuCaptureOptions,
+  type FilesCaptureOptions,
   type HeapCaptureOptions,
   type ImportProfileOptions,
 } from './capture'
@@ -27,6 +29,7 @@ import type {
 } from './shared/types'
 
 export const DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES = 32768
+export const DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS = 1
 
 /**
  * Uploads bypass the server's JSON body parser (the webapp sends
@@ -39,6 +42,7 @@ export interface CaptureController {
   status(): RunningCapture | null
   startCpu(options: CpuCaptureOptions): Promise<string>
   startHeap(options: HeapCaptureOptions): Promise<string>
+  startFiles(options: FilesCaptureOptions): Promise<string>
   importProfile(raw: unknown, options: ImportProfileOptions): Promise<string>
 }
 
@@ -150,6 +154,29 @@ export function registerRoutes(
         deps.captures.startHeap({
           durationSeconds: duration,
           samplingIntervalBytes: Math.floor(samplingIntervalBytes),
+        }),
+      )
+    }),
+  )
+
+  router.post(
+    '/files-profile',
+    wrap(async (deps, req, res) => {
+      const body = asBody(req)
+      const duration = validateDuration(body.duration, deps.options, res)
+      if (duration === null) return
+      const sampleIntervalSeconds = validatePositiveNumber(
+        body.sampleIntervalSeconds,
+        DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS,
+        'sampleIntervalSeconds',
+        res,
+      )
+      if (sampleIntervalSeconds === null) return
+
+      await startCapture(res, () =>
+        deps.captures.startFiles({
+          durationSeconds: duration,
+          sampleIntervalSeconds,
         }),
       )
     }),
@@ -301,6 +328,10 @@ async function startCapture(res: Response, start: () => Promise<string>): Promis
   } catch (error) {
     if (error instanceof CaptureBusyError) {
       res.status(409).json({ error: error.message })
+      return
+    }
+    if (error instanceof FileCaptureUnsupportedError) {
+      res.status(501).json({ error: error.message })
       return
     }
     throw error

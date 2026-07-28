@@ -11,7 +11,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { ProfileListEntry, ProfileReport, ProfileType } from './shared/types'
 
-const ID_PATTERN = /^(cpu|heap)-[A-Za-z0-9][A-Za-z0-9-]*$/
+const ID_PATTERN = /^(cpu|heap|files)-[A-Za-z0-9][A-Za-z0-9-]*$/
 const REPORT_SUFFIX = '.report.json'
 
 export function isValidProfileId(id: string): boolean {
@@ -19,11 +19,15 @@ export function isValidProfileId(id: string): boolean {
 }
 
 export function profileTypeOf(id: string): ProfileType {
-  return id.startsWith('heap-') ? 'heap' : 'cpu'
+  if (id.startsWith('heap-')) return 'heap'
+  if (id.startsWith('files-')) return 'files'
+  return 'cpu'
 }
 
 export function rawExtension(type: ProfileType): string {
-  return type === 'cpu' ? '.cpuprofile' : '.heapprofile'
+  if (type === 'cpu') return '.cpuprofile'
+  if (type === 'heap') return '.heapprofile'
+  return '.filesprofile'
 }
 
 export function makeProfileId(type: ProfileType, date: Date): string {
@@ -32,7 +36,7 @@ export function makeProfileId(type: ProfileType, date: Date): string {
 
 /** Inverse of makeProfileId: the capture timestamp embedded in an id, if any. */
 export function capturedAtFromProfileId(id: string): string | null {
-  const match = /^(?:cpu|heap)-(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(id)
+  const match = /^(?:cpu|heap|files)-(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(id)
   if (!match) return null
   const iso = `${match[1]}:${match[2]}:${match[3]}.${match[4]}Z`
   return Number.isNaN(Date.parse(iso)) ? null : iso
@@ -53,6 +57,7 @@ export interface EmbeddedProfileMeta {
   durationMs: number
   samplingIntervalUs?: number
   samplingIntervalBytes?: number
+  sampleIntervalSeconds?: number
 }
 
 /** The fields of a raw profile's embedded metadata that validate. */
@@ -73,6 +78,9 @@ export function embeddedProfileMetaOf(raw: unknown): Partial<EmbeddedProfileMeta
   if (typeof meta.samplingIntervalBytes === 'number' && meta.samplingIntervalBytes > 0) {
     out.samplingIntervalBytes = meta.samplingIntervalBytes
   }
+  if (typeof meta.sampleIntervalSeconds === 'number' && meta.sampleIntervalSeconds > 0) {
+    out.sampleIntervalSeconds = meta.sampleIntervalSeconds
+  }
   return out
 }
 
@@ -85,7 +93,9 @@ function withEmbeddedMeta(report: ProfileReport, raw: unknown): unknown {
     durationMs: report.durationMs,
     ...(report.type === 'cpu'
       ? { samplingIntervalUs: report.samplingIntervalUs }
-      : { samplingIntervalBytes: report.samplingIntervalBytes }),
+      : report.type === 'heap'
+        ? { samplingIntervalBytes: report.samplingIntervalBytes }
+        : { sampleIntervalSeconds: report.sampleIntervalSeconds }),
   }
   return { ...raw, [EMBEDDED_META_KEY]: meta }
 }

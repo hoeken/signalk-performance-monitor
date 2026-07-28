@@ -1,6 +1,7 @@
 /** Fixture API responses for component tests. */
 import type {
   CpuReport,
+  FilesReport,
   HeapReport,
   HttpRequestsResponse,
   MetricsSnapshot,
@@ -16,8 +17,8 @@ export const metricsFixture: MetricsSnapshot = {
   cpuUtilization: 0.37,
   http: { requestRate: 3.4, requestDuration: { p50: 0.0042, p99: 0.0871, max: 0.1502 } },
   resources: {
-    fsReadRate: 12,
-    fsWriteRate: 45.2,
+    diskReadRate: 12_288,
+    diskWriteRate: 46_285,
     involuntaryContextSwitchRate: 123.4,
     majorPageFaultRate: 0,
   },
@@ -214,6 +215,81 @@ export const heapReportFixture: HeapReport = {
   },
 }
 
+export const filesReportFixture: FilesReport = {
+  id: 'files-2026-07-28T08-00-00-000Z',
+  type: 'files',
+  capturedAt: '2026-07-28T08:00:00.000Z',
+  durationMs: 30000,
+  sampleIntervalSeconds: 1,
+  sampleCount: 31,
+  totals: {
+    writeBytes: 1_572_864,
+    readBytes: 0,
+    writeBytesPerSecond: 52_428.8,
+    readBytesPerSecond: 0,
+  },
+  files: [
+    {
+      path: '/data/.signalk/plugin-config-data/maintenance-tracker/maintenance.db-wal',
+      bucket: 'maintenance-tracker',
+      mode: 'read-write',
+      kind: 'sqlite-wal',
+      sizeBytes: 4_152_000,
+      growthBytes: 0,
+      mtimeChanges: 30,
+      inPlaceRewrites: 30,
+    },
+    {
+      path: '/data/.signalk/plugin-config-data/maintenance-tracker/maintenance.db',
+      bucket: 'maintenance-tracker',
+      mode: 'read-write',
+      kind: 'sqlite-db',
+      sizeBytes: 262_144,
+      growthBytes: 0,
+      mtimeChanges: 0,
+      inPlaceRewrites: 0,
+    },
+    {
+      path: '/data/.signalk/serverstate/course/courseInfo.json',
+      bucket: 'signalk-server (core)',
+      mode: 'write',
+      kind: 'file',
+      sizeBytes: 812,
+      growthBytes: 24_360,
+      mtimeChanges: 30,
+      inPlaceRewrites: 0,
+    },
+    {
+      path: '/data/.signalk/settings.json',
+      bucket: 'signalk-server (core)',
+      mode: 'read',
+      kind: 'file',
+      sizeBytes: 9_216,
+      growthBytes: 0,
+      mtimeChanges: 0,
+      inPlaceRewrites: 0,
+    },
+  ],
+  databases: [
+    {
+      path: '/data/.signalk/plugin-config-data/maintenance-tracker/maintenance.db',
+      bucket: 'maintenance-tracker',
+      pageSize: 4096,
+      commits: 240,
+      commitsPerSecond: 8,
+      framesWritten: 240,
+      checkpoints: 1,
+      estimatedWriteBytes: 1_064_640,
+      notes: ['8/s sustained commits — each one costs an fsync; consider batching writes'],
+    },
+  ],
+  attribution: [
+    { name: 'maintenance-tracker', estimatedWriteBytes: 1_064_640, percent: 67.7 },
+    { name: 'signalk-server (core)', estimatedWriteBytes: 24_360, percent: 1.5 },
+    { name: '(unattributed)', estimatedWriteBytes: 483_864, percent: 30.8 },
+  ],
+}
+
 export const profileListFixture: ProfileListResponse = {
   running: null,
   profiles: [
@@ -230,6 +306,13 @@ export const profileListFixture: ProfileListResponse = {
       capturedAt: '2026-07-28T09:00:00.000Z',
       durationMs: 30000,
       rawSizeBytes: 51_200,
+    },
+    {
+      id: 'files-2026-07-28T08-00-00-000Z',
+      type: 'files',
+      capturedAt: '2026-07-28T08:00:00.000Z',
+      durationMs: 30000,
+      rawSizeBytes: 18_432,
     },
   ],
 }

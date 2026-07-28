@@ -6,9 +6,14 @@ import { promises as fs, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CaptureBusyError, CaptureManager, InvalidProfileError } from '../src/capture'
+import {
+  CaptureBusyError,
+  CaptureManager,
+  FileCaptureUnsupportedError,
+  InvalidProfileError,
+} from '../src/capture'
 import { ProfileStore } from '../src/store'
-import type { CpuReport, HeapReport, RunningCapture } from '../src/shared/types'
+import type { CpuReport, FilesReport, HeapReport, RunningCapture } from '../src/shared/types'
 
 function busyWait(ms: number): void {
   const until = Date.now() + ms
@@ -110,7 +115,79 @@ describe('CaptureManager', () => {
     await expect(
       manager.startHeap({ durationSeconds: 1, samplingIntervalBytes: 32768 }),
     ).rejects.toThrow(CaptureBusyError)
+    await expect(
+      manager.startFiles({ durationSeconds: 1, sampleIntervalSeconds: 1 }),
+    ).rejects.toThrow(CaptureBusyError)
     await manager.abort()
+  })
+
+  it('captures file activity against a proc layout and stores raw + report', async () => {
+    // A minimal fake /proc/self: an io file and an empty fd inventory, so
+    // the loop runs identically on every platform.
+    const procSelf = path.join(dir, 'proc-self')
+    await fs.mkdir(path.join(procSelf, 'fd'), { recursive: true })
+    await fs.mkdir(path.join(procSelf, 'fdinfo'), { recursive: true })
+    await fs.writeFile(
+      path.join(procSelf, 'io'),
+      'rchar: 0\nwchar: 0\nread_bytes: 0\nwrite_bytes: 4096\n',
+    )
+    const filesManager = new CaptureManager({
+      store,
+      procSelfDir: procSelf,
+      dataPathOptions: { dataRoot: dir },
+      onError: (error) => errors.push(error),
+    })
+
+    const id = await filesManager.startFiles({ durationSeconds: 0.4, sampleIntervalSeconds: 0.1 })
+    expect(id).toMatch(/^files-/)
+    expect(filesManager.status()?.type).toBe('files')
+
+    await fs.writeFile(
+      path.join(procSelf, 'io'),
+      'rchar: 0\nwchar: 0\nread_bytes: 0\nwrite_bytes: 104096\n',
+    )
+    await waitForIdle(filesManager)
+    expect(errors).toEqual([])
+
+    const report = (await store.getReport(id)) as FilesReport
+    expect(report.type).toBe('files')
+    expect(report.sampleIntervalSeconds).toBe(0.1)
+    expect(report.sampleCount).toBeGreaterThanOrEqual(2)
+    expect(report.totals.writeBytes).toBe(100000)
+    expect(report.attribution.at(-1)?.name).toBe('(unattributed)')
+
+    const raw = JSON.parse((await store.getRaw(id))!.toString()) as {
+      samples: unknown[]
+    }
+    expect(raw.samples.length).toBe(report.sampleCount)
+  })
+
+  it('refuses file captures without a proc filesystem', async () => {
+    const noProc = new CaptureManager({ store, procSelfDir: path.join(dir, 'missing') })
+    await expect(
+      noProc.startFiles({ durationSeconds: 1, sampleIntervalSeconds: 1 }),
+    ).rejects.toThrow(FileCaptureUnsupportedError)
+    expect(noProc.status()).toBeNull()
+  })
+
+  it('aborts an in-flight file capture without storing anything', async () => {
+    const procSelf = path.join(dir, 'proc-self-abort')
+    await fs.mkdir(path.join(procSelf, 'fd'), { recursive: true })
+    await fs.mkdir(path.join(procSelf, 'fdinfo'), { recursive: true })
+    await fs.writeFile(path.join(procSelf, 'io'), 'read_bytes: 0\nwrite_bytes: 0\n')
+    const filesManager = new CaptureManager({
+      store,
+      procSelfDir: procSelf,
+      onError: (error) => errors.push(error),
+    })
+
+    const id = await filesManager.startFiles({ durationSeconds: 30, sampleIntervalSeconds: 1 })
+    await sleep(50)
+    await filesManager.abort()
+
+    expect(filesManager.status()).toBeNull()
+    expect(await store.getReport(id)).toBeNull()
+    expect(errors).toEqual([])
   })
 
   it('aborts an in-flight capture without storing anything', async () => {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatDuration, formatMs, formatPercent, formatRate } from './format'
+import {
+  formatBytes,
+  formatBytesRate,
+  formatDuration,
+  formatMs,
+  formatPercent,
+  formatRate,
+} from './format'
 
 describe('formatMs', () => {
   it('renders seconds-valued delays as milliseconds with fixed precision', () => {
@@ -32,6 +39,14 @@ describe('formatBytes', () => {
     expect(formatBytes(2048)).toBe('2.0 kB')
     expect(formatBytes(88_300_544)).toBe('84.2 MB')
     expect(formatBytes(2_147_483_648)).toBe('2.0 GB')
+  })
+})
+
+describe('formatBytesRate', () => {
+  it('renders byte rates with the same scaling', () => {
+    expect(formatBytesRate(0)).toBe('0 B/s')
+    expect(formatBytesRate(46_285)).toBe('45.2 kB/s')
+    expect(formatBytesRate(1_572_864)).toBe('1.5 MB/s')
   })
 })
 

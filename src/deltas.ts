@@ -64,8 +64,8 @@ export function buildMetricsDelta(snapshot: MetricsSnapshot): Delta {
           { path: paths.httpRequestDurationP50, value: snapshot.http.requestDuration.p50 },
           { path: paths.httpRequestDurationP99, value: snapshot.http.requestDuration.p99 },
           { path: paths.httpRequestDurationMax, value: snapshot.http.requestDuration.max },
-          { path: paths.diskReadRate, value: snapshot.resources.fsReadRate },
-          { path: paths.diskWriteRate, value: snapshot.resources.fsWriteRate },
+          { path: paths.diskReadRate, value: snapshot.resources.diskReadRate },
+          { path: paths.diskWriteRate, value: snapshot.resources.diskWriteRate },
           {
             path: paths.involuntaryContextSwitchRate,
             value: snapshot.resources.involuntaryContextSwitchRate,
@@ -161,17 +161,16 @@ export function buildMetaDelta(): Delta {
           {
             path: paths.diskReadRate,
             value: {
-              units: 'Hz',
+              units: 'B/s',
               description:
-                '512-byte blocks read from storage per second by the server process — page-cache misses only, so a steady 0 is normal',
+                'Bytes read from storage per second by the server process — page-cache misses only, so a steady 0 is normal',
             },
           },
           {
             path: paths.diskWriteRate,
             value: {
-              units: 'Hz',
-              description:
-                '512-byte blocks written to storage per second by the server process (2000/s ≈ 1 MB/s)',
+              units: 'B/s',
+              description: 'Bytes written to storage per second by the server process',
             },
           },
           {

@@ -33,8 +33,8 @@ describe('MetricsTiles', () => {
     expect(screen.getByText('3.4/s')).toBeInTheDocument()
 
     expect(screen.getByText('Disk writes')).toBeInTheDocument()
-    expect(screen.getByText('45.2/s')).toBeInTheDocument()
-    expect(screen.getByText(/reads 12\.0\/s/)).toBeInTheDocument()
+    expect(screen.getByText('45.2 kB/s')).toBeInTheDocument()
+    expect(screen.getByText(/reads 12\.0 kB\/s/)).toBeInTheDocument()
 
     expect(screen.getByText('Ctx switches (invol.)')).toBeInTheDocument()
     expect(screen.getByText('123.4/s')).toBeInTheDocument()

@@ -35,7 +35,9 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
           {profiles.map((profile) => (
             <tr key={profile.id} className={profile.id === selectedId ? 'bg-base-200' : undefined}>
               <td>{formatDateTime(profile.capturedAt)}</td>
-              <td>{profile.type === 'heap' ? 'Memory' : 'CPU'}</td>
+              <td>
+                {profile.type === 'heap' ? 'Memory' : profile.type === 'files' ? 'Files' : 'CPU'}
+              </td>
               <td>{formatDuration(profile.durationMs)}</td>
               <td>{formatBytes(profile.rawSizeBytes)}</td>
               <td>

@@ -14,10 +14,10 @@ modifications, no changes to other plugins.**
 
 - **Continuous metrics** published as Signal K deltas every 5 s (configurable):
   event-loop delay p50/p99/max, event-loop utilization, GC pause time, heap/RSS,
-  process CPU utilization, HTTP request rate and duration percentiles, disk I/O
-  operation rates, involuntary context switches, and major page faults. Works out
-  of the box with the data browser, `signalk-to-influxdb`/Grafana, and alerting
-  plugins.
+  process CPU utilization, HTTP request rate and duration percentiles, byte-accurate
+  disk read/write rates (from `/proc/self/io`), involuntary context switches, and
+  major page faults. Works out of the box with the data browser,
+  `signalk-to-influxdb`/Grafana, and alerting plugins.
 - **On-demand CPU profiling** of the live server via a self-connected inspector session.
   The V8 sampling profiler runs off-thread: a few percent overhead _only while capturing_,
   zero otherwise. No debug port is opened.
@@ -27,12 +27,18 @@ modifications, no changes to other plugins.**
 - **Allocation profiling** (sampling heap profiler) with the same per-plugin bucketing:
   see which plugin allocates most. Full heap snapshots are deliberately not exposed
   (unsafe on memory-constrained hardware).
+- **File activity profiling**: watch every file the server has open (via
+  `/proc/self/fd`) for a bounded window — size growth for append writers, mtime-only
+  churn for in-place rewriters, and passive SQLite WAL-index reads for per-database
+  commit/frame/checkpoint rates — attributed per plugin and honesty-checked against
+  the kernel's process-wide write counter. No strace, no locks, no writes.
 - **HTTP request tracking**: the last 100 requests (method, path with query string,
   status, duration, response size) plus cumulative per-path aggregates (request count,
   average/max/total duration, errors, bytes) — sortable, searchable tables in the webapp.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
-  per-plugin table with share bars and expandable top functions, raw profile JSON
+  per-plugin table with share bars and expandable top functions, file activity reports
+  with per-plugin write attribution and per-database SQLite stats, raw profile JSON
   download (opens in Chrome DevTools or [speedscope](https://www.speedscope.app/)).
 
 ## Install
@@ -50,21 +56,22 @@ server ≥ 2.x.
 
 ## Signal K paths
 
-| Path                                                     | Unit                |
-| -------------------------------------------------------- | ------------------- |
-| `performance.eventLoopDelay.p50` / `.p99` / `.max`       | s                   |
-| `performance.eventLoopUtilization`                       | ratio 0–1           |
-| `performance.gc.pauseTime`                               | s (per interval)    |
-| `performance.memory.heapUsed` / `.rss`                   | bytes               |
-| `performance.cpu.utilization`                            | ratio               |
-| `performance.http.requestRate`                           | Hz (requests/s)     |
-| `performance.http.requestDuration.p50` / `.p99` / `.max` | s                   |
-| `performance.disk.readRate` / `.writeRate`               | Hz (512 B blocks/s) |
-| `performance.cpu.involuntaryContextSwitchRate`           | Hz                  |
-| `performance.memory.majorPageFaultRate`                  | Hz                  |
+| Path                                                     | Unit             |
+| -------------------------------------------------------- | ---------------- |
+| `performance.eventLoopDelay.p50` / `.p99` / `.max`       | s                |
+| `performance.eventLoopUtilization`                       | ratio 0–1        |
+| `performance.gc.pauseTime`                               | s (per interval) |
+| `performance.memory.heapUsed` / `.rss`                   | bytes            |
+| `performance.cpu.utilization`                            | ratio            |
+| `performance.http.requestRate`                           | Hz (requests/s)  |
+| `performance.http.requestDuration.p50` / `.p99` / `.max` | s                |
+| `performance.disk.readRate` / `.writeRate`               | B/s              |
+| `performance.cpu.involuntaryContextSwitchRate`           | Hz               |
+| `performance.memory.majorPageFaultRate`                  | Hz               |
 
-Disk I/O is counted in the kernel's 512-byte block units (2000 writes/s ≈ 1 MB/s), and
-reads count only page-cache misses — a steady 0 is normal on a warmed-up server.
+Disk I/O is byte-accurate from `/proc/self/io` (on non-Linux hosts it falls back to
+512-byte block counts × 512), and reads count only page-cache misses — a steady 0 is
+normal on a warmed-up server.
 
 Delta publishing can be disabled entirely, leaving webapp/HTTP-only access.
 
@@ -74,16 +81,17 @@ All routes are registered on the plugin router — **admin-only** under the serv
 security strategy, which is required, not optional: profiles reveal file paths and
 function names. Base: `/plugins/signalk-performance-monitor`.
 
-| Method | Route                 | Description                                                                              |
-| ------ | --------------------- | ---------------------------------------------------------------------------------------- |
-| GET    | `/metrics`            | Current metrics snapshot (JSON)                                                          |
-| GET    | `/http-requests`      | Last 100 requests + cumulative per-path aggregates                                       |
-| POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running |
-| POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`              |
-| GET    | `/profile`            | Stored profiles + status of any running capture                                          |
-| GET    | `/profile/:id/report` | Aggregated per-plugin report                                                             |
-| GET    | `/profile/:id/raw`    | Raw profile download (`.json`)                                                           |
-| DELETE | `/profile/:id`        | Delete a stored profile                                                                  |
+| Method | Route                 | Description                                                                                   |
+| ------ | --------------------- | --------------------------------------------------------------------------------------------- |
+| GET    | `/metrics`            | Current metrics snapshot (JSON)                                                               |
+| GET    | `/http-requests`      | Last 100 requests + cumulative per-path aggregates                                            |
+| POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running      |
+| POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`                   |
+| POST   | `/files-profile`      | Start file activity capture `{ duration?, sampleIntervalSeconds? }` → `{ id }`; 501 off-Linux |
+| GET    | `/profile`            | Stored profiles + status of any running capture                                               |
+| GET    | `/profile/:id/report` | Aggregated per-plugin report                                                                  |
+| GET    | `/profile/:id/raw`    | Raw profile download (`.json`)                                                                |
+| DELETE | `/profile/:id`        | Delete a stored profile                                                                       |
 
 Example report:
 

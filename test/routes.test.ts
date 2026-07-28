@@ -10,8 +10,10 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   CaptureBusyError,
+  FileCaptureUnsupportedError,
   InvalidProfileError,
   type CpuCaptureOptions,
+  type FilesCaptureOptions,
   type HeapCaptureOptions,
   type ImportProfileOptions,
 } from '../src/capture'
@@ -33,8 +35,8 @@ const SNAPSHOT: MetricsSnapshot = {
   cpuUtilization: 0.25,
   http: { requestRate: 2, requestDuration: { p50: 0.004, p99: 0.05, max: 0.12 } },
   resources: {
-    fsReadRate: 10,
-    fsWriteRate: 20,
+    diskReadRate: 10,
+    diskWriteRate: 20,
     involuntaryContextSwitchRate: 30,
     majorPageFaultRate: 0,
   },
@@ -69,6 +71,8 @@ class FakeCaptures implements CaptureController {
   running: RunningCapture | null = null
   cpuCalls: CpuCaptureOptions[] = []
   heapCalls: HeapCaptureOptions[] = []
+  filesCalls: FilesCaptureOptions[] = []
+  filesSupported = true
   importCalls: { raw: unknown; options: ImportProfileOptions }[] = []
 
   status(): RunningCapture | null {
@@ -99,6 +103,20 @@ class FakeCaptures implements CaptureController {
       remainingSeconds: options.durationSeconds,
     }
     return 'heap-fake'
+  }
+
+  async startFiles(options: FilesCaptureOptions): Promise<string> {
+    if (this.running) throw new CaptureBusyError()
+    if (!this.filesSupported) throw new FileCaptureUnsupportedError()
+    this.filesCalls.push(options)
+    this.running = {
+      id: 'files-fake',
+      type: 'files',
+      startedAt: '2026-07-28T00:00:00.000Z',
+      durationSeconds: options.durationSeconds,
+      remainingSeconds: options.durationSeconds,
+    }
+    return 'files-fake'
   }
 
   async importProfile(raw: unknown, options: ImportProfileOptions): Promise<string> {
@@ -219,6 +237,40 @@ describe('HTTP routes', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ id: 'heap-fake' })
     expect(captures.heapCalls).toEqual([{ durationSeconds: 15, samplingIntervalBytes: 32768 }])
+  })
+
+  it('POST /files-profile starts a file activity capture with defaults', async () => {
+    const res = await request(app).post('/files-profile').send({})
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ id: 'files-fake' })
+    expect(captures.filesCalls).toEqual([{ durationSeconds: 30, sampleIntervalSeconds: 1 }])
+  })
+
+  it('POST /files-profile honours duration and sampleIntervalSeconds', async () => {
+    const res = await request(app)
+      .post('/files-profile')
+      .send({ duration: 60, sampleIntervalSeconds: 5 })
+    expect(res.status).toBe(200)
+    expect(captures.filesCalls).toEqual([{ durationSeconds: 60, sampleIntervalSeconds: 5 }])
+  })
+
+  it('POST /files-profile validates its inputs and rejects overlap', async () => {
+    for (const body of [{ duration: 121 }, { sampleIntervalSeconds: -1 }]) {
+      const res = await request(app).post('/files-profile').send(body)
+      expect(res.status).toBe(400)
+    }
+    expect(captures.filesCalls).toEqual([])
+
+    await request(app).post('/profile').send({})
+    const busy = await request(app).post('/files-profile').send({})
+    expect(busy.status).toBe(409)
+  })
+
+  it('POST /files-profile answers 501 where /proc is unavailable', async () => {
+    captures.filesSupported = false
+    const res = await request(app).post('/files-profile').send({})
+    expect(res.status).toBe(501)
+    expect(res.body.error).toMatch(/Linux/)
   })
 
   it('POST /profile/upload imports an octet-stream profile with its filename', async () => {

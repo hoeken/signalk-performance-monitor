@@ -47,8 +47,14 @@ export const getHttpRequests = () => request<HttpRequestsResponse>('/http-reques
 
 export const getProfiles = () => request<ProfileListResponse>('/profile')
 
+const START_ROUTES: Record<ProfileType, string> = {
+  cpu: '/profile',
+  heap: '/heap-profile',
+  files: '/files-profile',
+}
+
 export const startProfile = (type: ProfileType, durationSeconds: number) =>
-  request<StartProfileResponse>(type === 'cpu' ? '/profile' : '/heap-profile', {
+  request<StartProfileResponse>(START_ROUTES[type], {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ duration: durationSeconds }),
