@@ -1,0 +1,2 @@
+# Checkout with LF everywhere so prettier --check passes on Windows CI.
+* text=auto eol=lf

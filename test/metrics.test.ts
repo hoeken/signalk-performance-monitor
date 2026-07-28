@@ -30,7 +30,12 @@ describe('MetricsCollector', () => {
       expect(snapshot.cpuUtilization).toBeGreaterThan(0)
       expect(snapshot.gcPauseTime).toBeGreaterThanOrEqual(0)
       expect(snapshot.memory.heapUsed).toBeGreaterThan(0)
-      expect(snapshot.memory.rss).toBeGreaterThan(snapshot.memory.heapUsed)
+      // rss reads /proc/self/stat, which reports 0 under QEMU user-mode
+      // emulation (armv7 CI) — only compare when the OS actually reports it.
+      expect(snapshot.memory.rss).toBeGreaterThanOrEqual(0)
+      if (snapshot.memory.rss > 0) {
+        expect(snapshot.memory.rss).toBeGreaterThan(snapshot.memory.heapUsed)
+      }
       expect(collector.latest()).toBe(snapshot)
     } finally {
       collector.stop()
@@ -41,13 +46,19 @@ describe('MetricsCollector', () => {
     const collector = new MetricsCollector()
     collector.start()
     try {
-      busyWait(50)
+      // Let the delay monitor take its baseline tick before stalling the
+      // loop — a block right after enable() is never recorded.
+      await sleep(50)
+      busyWait(200)
       await sleep(50)
       const first = collector.sample()
       // An idle interval after a busy one must not inherit the busy max.
       await sleep(150)
       const second = collector.sample()
-      expect(second.eventLoopDelay.max).toBeLessThanOrEqual(first.eventLoopDelay.max + 0.001)
+      // The busy interval stalled the loop for ~200ms; a reset histogram in
+      // the idle interval reads far lower even on a noisy shared runner.
+      expect(first.eventLoopDelay.max).toBeGreaterThan(0.1)
+      expect(second.eventLoopDelay.max).toBeLessThan(first.eventLoopDelay.max / 2)
       expect(second.cpuUtilization).toBeLessThan(first.cpuUtilization)
     } finally {
       collector.stop()
