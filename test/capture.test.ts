@@ -1,0 +1,139 @@
+/**
+ * Integration tests: these connect a real inspector session to the test
+ * process and profile it, exactly as the plugin does to the Signal K server.
+ */
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { CaptureBusyError, CaptureManager } from '../src/capture'
+import { ProfileStore } from '../src/store'
+import type { CpuReport, HeapReport, RunningCapture } from '../src/shared/types'
+
+function busyWait(ms: number): void {
+  const until = Date.now() + ms
+  let x = 0
+  while (Date.now() < until) {
+    x += Math.sqrt(Math.random())
+  }
+  if (x < 0) throw new Error('unreachable')
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function waitForIdle(manager: CaptureManager, timeoutMs = 10000): Promise<void> {
+  const start = Date.now()
+  while (manager.status() !== null) {
+    if (Date.now() - start > timeoutMs) throw new Error('capture did not finish in time')
+    await sleep(50)
+  }
+}
+
+describe('CaptureManager', () => {
+  let dir: string
+  let store: ProfileStore
+  let statusUpdates: (RunningCapture | null)[]
+  let errors: unknown[]
+  let manager: CaptureManager
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(tmpdir(), 'skpm-capture-'))
+    store = new ProfileStore(dir, 5)
+    statusUpdates = []
+    errors = []
+    manager = new CaptureManager({
+      store,
+      bucketOptions: {},
+      onStatus: (running) => statusUpdates.push(running),
+      onError: (error) => errors.push(error),
+    })
+  })
+
+  afterEach(async () => {
+    await manager.abort()
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it('captures a CPU profile of this process and stores raw + report', async () => {
+    const id = await manager.startCpu({ durationSeconds: 0.5, samplingIntervalUs: 500 })
+    expect(id).toMatch(/^cpu-/)
+
+    const status = manager.status()
+    expect(status?.id).toBe(id)
+    expect(status?.type).toBe('cpu')
+
+    busyWait(300)
+    await waitForIdle(manager)
+    expect(errors).toEqual([])
+
+    const report = (await store.getReport(id)) as CpuReport
+    expect(report.type).toBe('cpu')
+    expect(report.samplingIntervalUs).toBe(500)
+    expect(report.durationMs).toBeGreaterThan(300)
+    expect(report.buckets.length).toBeGreaterThan(0)
+    expect(report.totalTimeMs).toBeGreaterThan(0)
+
+    const raw = await store.getRaw(id)
+    const profile = JSON.parse(raw!.toString())
+    expect(Array.isArray(profile.nodes)).toBe(true)
+    expect(profile.nodes.length).toBeGreaterThan(0)
+
+    expect(statusUpdates[0]?.id).toBe(id)
+    expect(statusUpdates.at(-1)).toBeNull()
+  })
+
+  it('captures an allocation profile and buckets allocations', async () => {
+    const id = await manager.startHeap({ durationSeconds: 0.5, samplingIntervalBytes: 4096 })
+    expect(id).toMatch(/^heap-/)
+
+    const garbage: unknown[] = []
+    for (let i = 0; i < 5000; i++) {
+      garbage.push(new Array(64).fill(i).join(','))
+    }
+    expect(garbage.length).toBe(5000)
+
+    await waitForIdle(manager)
+    expect(errors).toEqual([])
+
+    const report = (await store.getReport(id)) as HeapReport
+    expect(report.type).toBe('heap')
+    expect(report.samplingIntervalBytes).toBe(4096)
+    expect(report.totalBytes).toBeGreaterThan(0)
+    expect(report.buckets.length).toBeGreaterThan(0)
+  })
+
+  it('rejects overlapping captures with CaptureBusyError', async () => {
+    await manager.startCpu({ durationSeconds: 2, samplingIntervalUs: 1000 })
+    await expect(
+      manager.startCpu({ durationSeconds: 1, samplingIntervalUs: 1000 }),
+    ).rejects.toThrow(CaptureBusyError)
+    await expect(
+      manager.startHeap({ durationSeconds: 1, samplingIntervalBytes: 32768 }),
+    ).rejects.toThrow(CaptureBusyError)
+    await manager.abort()
+  })
+
+  it('aborts an in-flight capture without storing anything', async () => {
+    const id = await manager.startCpu({ durationSeconds: 30, samplingIntervalUs: 1000 })
+    await sleep(100)
+    await manager.abort()
+
+    expect(manager.status()).toBeNull()
+    expect(await store.getReport(id)).toBeNull()
+    expect(await store.list()).toEqual([])
+
+    // and a new capture can start afterwards
+    const nextId = await manager.startCpu({ durationSeconds: 0.3, samplingIntervalUs: 1000 })
+    await waitForIdle(manager)
+    expect(await store.getReport(nextId)).not.toBeNull()
+  })
+
+  it('reports remaining seconds while running', async () => {
+    await manager.startCpu({ durationSeconds: 5, samplingIntervalUs: 1000 })
+    const status = manager.status()
+    expect(status?.durationSeconds).toBe(5)
+    expect(status?.remainingSeconds).toBeGreaterThan(3)
+    expect(status?.remainingSeconds).toBeLessThanOrEqual(5)
+    await manager.abort()
+  })
+})

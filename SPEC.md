@@ -33,16 +33,16 @@ Signal K server runs all JavaScript — delta processing, WebSocket fanout, REST
 
 On plugin start, begin collecting; every `publishIntervalSeconds` (default 5), emit one delta via `app.handleMessage`.
 
-| Path | Source | Unit |
-|---|---|---|
-| `performance.eventLoopDelay.p50` | `monitorEventLoopDelay()` percentile | s |
-| `performance.eventLoopDelay.p99` | 〃 | s |
-| `performance.eventLoopDelay.max` | 〃 (reset each interval) | s |
+| Path                               | Source                                                   | Unit        |
+| ---------------------------------- | -------------------------------------------------------- | ----------- |
+| `performance.eventLoopDelay.p50`   | `monitorEventLoopDelay()` percentile                     | s           |
+| `performance.eventLoopDelay.p99`   | 〃                                                       | s           |
+| `performance.eventLoopDelay.max`   | 〃 (reset each interval)                                 | s           |
 | `performance.eventLoopUtilization` | `performance.eventLoopUtilization()` diffed per interval | ratio (0–1) |
-| `performance.gc.pauseTime` | `PerformanceObserver` on `'gc'`, summed per interval | s |
-| `performance.memory.heapUsed` | `process.memoryUsage()` | bytes |
-| `performance.memory.rss` | 〃 | bytes |
-| `performance.cpu.utilization` | `process.cpuUsage()` diffed per interval | ratio |
+| `performance.gc.pauseTime`         | `PerformanceObserver` on `'gc'`, summed per interval     | s           |
+| `performance.memory.heapUsed`      | `process.memoryUsage()`                                  | bytes       |
+| `performance.memory.rss`           | 〃                                                       | bytes       |
+| `performance.cpu.utilization`      | `process.cpuUsage()` diffed per interval                 | ratio       |
 
 Notes:
 
@@ -76,8 +76,12 @@ Report format (stored alongside the raw profile):
   "samplingIntervalUs": 1000,
   "buckets": [
     { "name": "(idle)", "selfTimeMs": 18360, "percent": 61.2 },
-    { "name": "signalk-server (core)", "selfTimeMs": 5220, "percent": 17.4,
-      "topFunctions": [ { "name": "buildFullFromDeltas", "url": "...", "selfTimeMs": 3100 } ] }
+    {
+      "name": "signalk-server (core)",
+      "selfTimeMs": 5220,
+      "percent": 17.4,
+      "topFunctions": [{ "name": "buildFullFromDeltas", "url": "...", "selfTimeMs": 3100 }]
+    }
   ]
 }
 ```
@@ -94,27 +98,27 @@ Same flow as Feature 2 using `HeapProfiler.startSampling` / `stopSampling`; reus
 
 All routes registered via `registerWithRouter` directly on the router — **admin-only by default** under the server's security strategy. Base: `/plugins/signalk-performance-monitor/`.
 
-| Method | Route | Description |
-|---|---|---|
-| GET | `/metrics` | Current metrics snapshot (JSON) |
-| POST | `/profile` | Start CPU capture; returns `{ id }`; 409 if one is running |
-| GET | `/profile` | List stored profiles + status of any running capture |
-| GET | `/profile/:id/report` | Aggregated per-plugin report |
-| GET | `/profile/:id/raw` | Raw `.cpuprofile` (opens in Chrome DevTools / speedscope) |
-| DELETE | `/profile/:id` | Delete a stored profile |
-| POST | `/heap-profile` | (v0.4) allocation capture, same shape |
+| Method | Route                 | Description                                                |
+| ------ | --------------------- | ---------------------------------------------------------- |
+| GET    | `/metrics`            | Current metrics snapshot (JSON)                            |
+| POST   | `/profile`            | Start CPU capture; returns `{ id }`; 409 if one is running |
+| GET    | `/profile`            | List stored profiles + status of any running capture       |
+| GET    | `/profile/:id/report` | Aggregated per-plugin report                               |
+| GET    | `/profile/:id/raw`    | Raw `.cpuprofile` (opens in Chrome DevTools / speedscope)  |
+| DELETE | `/profile/:id`        | Delete a stored profile                                    |
+| POST   | `/heap-profile`       | (v0.4) allocation capture, same shape                      |
 
 ## Configuration schema
 
 ```json
 {
-  "publishIntervalSeconds":    { "type": "number", "default": 5 },
-  "publishDeltas":             { "type": "boolean", "default": true },
-  "pathPrefix":                { "type": "string",  "default": "performance" },
+  "publishIntervalSeconds": { "type": "number", "default": 5 },
+  "publishDeltas": { "type": "boolean", "default": true },
+  "pathPrefix": { "type": "string", "default": "performance" },
   "defaultProfileDurationSeconds": { "type": "number", "default": 30 },
   "maxProfileDurationSeconds": { "type": "number", "default": 120 },
-  "samplingIntervalUs":        { "type": "number", "default": 1000 },
-  "maxStoredProfiles":         { "type": "number", "default": 5 }
+  "samplingIntervalUs": { "type": "number", "default": 1000 },
+  "maxStoredProfiles": { "type": "number", "default": 5 }
 }
 ```
 
@@ -167,7 +171,7 @@ Modern React single-page app, built with Vite into static assets under `public/`
 
 1. **v0.1** — metrics collection + delta publishing + `/metrics` route.
 2. **v0.2** — CPU capture + raw `.cpuprofile` storage/download.
-3. **v0.3** — per-plugin aggregation report + React webapp. ← *announceable*
+3. **v0.3** — per-plugin aggregation report + React webapp. ← _announceable_
 4. **v0.4** — allocation profiling.
 5. **Later** — in-browser flamegraph; loop-delay alerting via SK notifications; optionally graduate always-on gauges into server core (`deltastats.ts`) as a separate PR with this plugin as evidence.
 

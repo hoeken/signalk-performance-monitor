@@ -1,0 +1,26 @@
+# Publishes to npm via OIDC trusted publishing on every GitHub release.
+# Requires the trusted publisher to be configured on npmjs.com for this
+# package (repository: hoeken/signalk-performance-monitor, workflow:
+# publish.yml). No NPM_TOKEN secret is needed.
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm test
+      - run: npm publish

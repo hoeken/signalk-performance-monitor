@@ -1,0 +1,19 @@
+{
+  "nodes": [
+    { "id": 1, "callFrame": { "functionName": "(root)", "scriptId": "0", "url": "", "lineNumber": -1, "columnNumber": -1 }, "hitCount": 0, "children": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    { "id": 2, "callFrame": { "functionName": "(program)", "scriptId": "0", "url": "", "lineNumber": -1, "columnNumber": -1 }, "hitCount": 1 },
+    { "id": 3, "callFrame": { "functionName": "(idle)", "scriptId": "0", "url": "", "lineNumber": -1, "columnNumber": -1 }, "hitCount": 6 },
+    { "id": 4, "callFrame": { "functionName": "(garbage collector)", "scriptId": "0", "url": "", "lineNumber": -1, "columnNumber": -1 }, "hitCount": 2 },
+    { "id": 5, "callFrame": { "functionName": "processDeltas", "scriptId": "11", "url": "file:///usr/lib/node_modules/signalk-server/lib/deltas.js", "lineNumber": 41, "columnNumber": 10 }, "hitCount": 3 },
+    { "id": 6, "callFrame": { "functionName": "handleDelta", "scriptId": "12", "url": "/home/pi/.signalk/node_modules/signalk-derived-data/index.js", "lineNumber": 100, "columnNumber": 2 }, "hitCount": 2 },
+    { "id": 7, "callFrame": { "functionName": "reportPosition", "scriptId": "13", "url": "/home/pi/.signalk/node_modules/@signalk/aisreporter/dist/index.js", "lineNumber": 55, "columnNumber": 4 }, "hitCount": 1 },
+    { "id": 8, "callFrame": { "functionName": "mapValues", "scriptId": "14", "url": "/home/pi/.signalk/node_modules/signalk-derived-data/node_modules/lodash/lodash.js", "lineNumber": 13400, "columnNumber": 0 }, "hitCount": 1 },
+    { "id": 9, "callFrame": { "functionName": "readFileHandle", "scriptId": "15", "url": "node:fs/promises", "lineNumber": 20, "columnNumber": 0 }, "hitCount": 1 },
+    { "id": 10, "callFrame": { "functionName": "", "scriptId": "16", "url": "", "lineNumber": 3, "columnNumber": 1 }, "hitCount": 1 },
+    { "id": 11, "callFrame": { "functionName": "buildFullFromDeltas", "scriptId": "11", "url": "file:///usr/lib/node_modules/signalk-server/lib/fullsignalk.js", "lineNumber": 12, "columnNumber": 8 }, "hitCount": 2 }
+  ],
+  "startTime": 0,
+  "endTime": 20000,
+  "samples": [3, 3, 3, 3, 3, 3, 5, 5, 5, 11, 11, 6, 6, 7, 8, 9, 10, 2, 4, 4],
+  "timeDeltas": [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+}
