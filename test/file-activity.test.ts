@@ -100,30 +100,28 @@ describe('parseWalIndexHeader', () => {
 })
 
 describe('bucketForDataPath', () => {
-  const options = { dataRoot: '/home/pi/.signalk', serverRoot: '/opt/signalk-server' }
+  const options = { dataRoot: '/data/.signalk', serverRoot: '/opt/signalk-server' }
 
   it('attributes plugin-config-data files to their plugin', () => {
     expect(
-      bucketForDataPath('/home/pi/.signalk/plugin-config-data/crowd-depth/depth.db', options),
+      bucketForDataPath('/data/.signalk/plugin-config-data/crowd-depth/depth.db', options),
     ).toBe('crowd-depth')
     expect(
-      bucketForDataPath('/home/pi/.signalk/plugin-config-data/crowd-depth/depth.db-wal', options),
+      bucketForDataPath('/data/.signalk/plugin-config-data/crowd-depth/depth.db-wal', options),
     ).toBe('crowd-depth')
   })
 
   it('attributes other data-root files to the server core', () => {
-    expect(bucketForDataPath('/home/pi/.signalk/settings.json', options)).toBe(
-      'signalk-server (core)',
-    )
-    expect(bucketForDataPath('/home/pi/.signalk/serverstate/course/courseInfo.json', options)).toBe(
+    expect(bucketForDataPath('/data/.signalk/settings.json', options)).toBe('signalk-server (core)')
+    expect(bucketForDataPath('/data/.signalk/serverstate/course/courseInfo.json', options)).toBe(
       'signalk-server (core)',
     )
   })
 
   it('attributes node_modules paths to their package, even under the data root', () => {
-    expect(
-      bucketForDataPath('/home/pi/.signalk/node_modules/some-plugin/cache.json', options),
-    ).toBe('some-plugin')
+    expect(bucketForDataPath('/data/.signalk/node_modules/some-plugin/cache.json', options)).toBe(
+      'some-plugin',
+    )
     expect(bucketForDataPath('/usr/lib/node_modules/@scope/pkg/data/file.log', options)).toBe(
       '@scope/pkg',
     )
@@ -142,24 +140,24 @@ describe('bucketForDataPath', () => {
     // package name (signalk-charts-provider-simple stores charts under
     // charts-simple/), so the folder name is the bucket.
     expect(
-      bucketForDataPath('/home/pi/.signalk/charts-simple/Fiji/Fiji_Blighwater.mbtiles', options),
+      bucketForDataPath('/data/.signalk/charts-simple/Fiji/Fiji_Blighwater.mbtiles', options),
     ).toBe('charts-simple')
-    expect(bucketForDataPath('/home/pi/.signalk/red/flows.json', options)).toBe('red')
-    expect(bucketForDataPath('/home/pi/.signalk/@scope/tiles/cache/z1.db', options)).toBe(
+    expect(bucketForDataPath('/data/.signalk/red/flows.json', options)).toBe('red')
+    expect(bucketForDataPath('/data/.signalk/@scope/tiles/cache/z1.db', options)).toBe(
       '@scope/tiles',
     )
   })
 
   it('keeps core folders, top-level files, and hidden dirs with the server core', () => {
     for (const corePath of [
-      '/home/pi/.signalk/serverstate/course/courseInfo.json',
-      '/home/pi/.signalk/serverState/course/courseInfo.json',
-      '/home/pi/.signalk/applicationData/global/some-app/1.0.json',
-      '/home/pi/.signalk/resources/routes/x.json',
-      '/home/pi/.signalk/logs/skserver.log',
-      '/home/pi/.signalk/.cache/something',
-      '/home/pi/.signalk/security.json',
-      '/home/pi/.signalk/charts-simple', // a top-level *file*, not a storage folder
+      '/data/.signalk/serverstate/course/courseInfo.json',
+      '/data/.signalk/serverState/course/courseInfo.json',
+      '/data/.signalk/applicationData/global/some-app/1.0.json',
+      '/data/.signalk/resources/routes/x.json',
+      '/data/.signalk/logs/skserver.log',
+      '/data/.signalk/.cache/something',
+      '/data/.signalk/security.json',
+      '/data/.signalk/charts-simple', // a top-level *file*, not a storage folder
     ]) {
       expect(bucketForDataPath(corePath, options)).toBe('signalk-server (core)')
     }
