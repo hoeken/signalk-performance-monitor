@@ -42,13 +42,13 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
                 <div className="flex justify-end gap-1.5">
                   <button
                     type="button"
-                    className="btn btn-xs btn-success btn-outline"
+                    className="btn btn-xs btn-info btn-outline"
                     onClick={() => onSelect(profile.id)}
                   >
                     View
                   </button>
                   <a
-                    className="btn btn-xs btn-info btn-outline"
+                    className="btn btn-xs btn-success btn-outline"
                     href={rawProfileUrl(profile.id)}
                     download
                   >
