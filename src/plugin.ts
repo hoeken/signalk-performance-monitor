@@ -184,13 +184,14 @@ export function createPlugin(app: ServerAPI): Plugin {
       const dataDir = app.getDataDirPath()
       const store = new ProfileStore(dataDir, config.maxStoredProfiles)
       const serverRoot = detectServerRoot()
+      // The data dir is <configDir>/plugin-config-data/<plugin-id>; two
+      // levels up is the Signal K config root that file paths are
+      // attributed against.
+      const dataRoot = path.dirname(path.dirname(dataDir))
       captures = new CaptureManager({
         store,
         bucketOptions: { serverRoot },
-        // The data dir is <configDir>/plugin-config-data/<plugin-id>; two
-        // levels up is the Signal K config root that file paths are
-        // attributed against.
-        dataPathOptions: { dataRoot: path.dirname(path.dirname(dataDir)), serverRoot },
+        dataPathOptions: { dataRoot, serverRoot },
         onStatus: onCaptureStatus,
         onError: (error) => app.error(`capture failed: ${String(error)}`),
       })

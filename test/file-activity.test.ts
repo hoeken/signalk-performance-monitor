@@ -136,6 +136,34 @@ describe('bucketForDataPath', () => {
     expect(bucketForDataPath('/var/log/syslog', options)).toBe('(other)')
     expect(bucketForDataPath('/var/log/syslog')).toBe('(other)')
   })
+
+  it('attributes plugin storage folders under the data root by their folder name', () => {
+    // The folder name is the plugin's own choice and often differs from its
+    // package name (signalk-charts-provider-simple stores charts under
+    // charts-simple/), so the folder name is the bucket.
+    expect(
+      bucketForDataPath('/home/pi/.signalk/charts-simple/Fiji/Fiji_Blighwater.mbtiles', options),
+    ).toBe('charts-simple')
+    expect(bucketForDataPath('/home/pi/.signalk/red/flows.json', options)).toBe('red')
+    expect(bucketForDataPath('/home/pi/.signalk/@scope/tiles/cache/z1.db', options)).toBe(
+      '@scope/tiles',
+    )
+  })
+
+  it('keeps core folders, top-level files, and hidden dirs with the server core', () => {
+    for (const corePath of [
+      '/home/pi/.signalk/serverstate/course/courseInfo.json',
+      '/home/pi/.signalk/serverState/course/courseInfo.json',
+      '/home/pi/.signalk/applicationData/global/some-app/1.0.json',
+      '/home/pi/.signalk/resources/routes/x.json',
+      '/home/pi/.signalk/logs/skserver.log',
+      '/home/pi/.signalk/.cache/something',
+      '/home/pi/.signalk/security.json',
+      '/home/pi/.signalk/charts-simple', // a top-level *file*, not a storage folder
+    ]) {
+      expect(bucketForDataPath(corePath, options)).toBe('signalk-server (core)')
+    }
+  })
 })
 
 describe('listOpenFiles', () => {

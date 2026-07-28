@@ -123,17 +123,39 @@ export interface DataPathBucketOptions {
   serverRoot?: string
 }
 
-function isUnder(filePath: string, root: string): boolean {
+/**
+ * First-level config-dir entries owned by the server itself (compared
+ * lowercased — older installs have e.g. `serverState`). Anything else at
+ * that level is some plugin's local storage folder.
+ */
+const CORE_DATA_DIRS = new Set([
+  'node_modules',
+  'plugin-config-data',
+  'serverstate',
+  'applicationdata',
+  'resources',
+  'defaults',
+  'logs',
+])
+
+/** The path relative to `root`, or null when it is not under `root`. */
+function pathWithin(filePath: string, root: string | undefined): string | null {
+  if (!root) return null
   const normalized = root.replace(/\\/g, '/').replace(/\/+$/, '')
-  return normalized !== '' && (filePath === normalized || filePath.startsWith(normalized + '/'))
+  if (!normalized) return null
+  if (filePath === normalized) return ''
+  return filePath.startsWith(normalized + '/') ? filePath.slice(normalized.length + 1) : null
 }
 
 /**
  * The same attribution as `bucketForFrame`, keyed on data-file paths
  * instead of source URLs: files under `plugin-config-data/<plugin>/` belong
- * to that plugin, other files under the Signal K data root (settings.json,
- * serverstate/, logs) to the server core, node_modules paths to their
- * package, everything else to `(other)`.
+ * to that plugin, node_modules paths to their package, files in any other
+ * first-level folder under the Signal K data root to that folder's name —
+ * plugins keep local storage in folders they name themselves
+ * (~/.signalk/charts-simple/…), and the folder name is the most honest
+ * label available. Remaining data-root files (settings.json, serverstate/)
+ * are the server core's, everything else `(other)`.
  */
 export function bucketForDataPath(filePath: string, options: DataPathBucketOptions = {}): string {
   const normalized = filePath.replace(/\\/g, '/')
@@ -151,7 +173,23 @@ export function bucketForDataPath(filePath: string, options: DataPathBucketOptio
   )
   if (packageBucket !== OTHER_BUCKET) return packageBucket
 
-  if (options.dataRoot && isUnder(normalized, options.dataRoot)) return SIGNALK_CORE_BUCKET
+  const withinDataRoot = pathWithin(normalized, options.dataRoot)
+  if (withinDataRoot !== null) {
+    // A file inside a non-core first-level folder is some plugin's local
+    // storage; bucket it by the folder name (scoped names span two segments).
+    const segments = withinDataRoot.split('/')
+    const scoped = segments[0]?.startsWith('@') === true
+    const name = scoped ? segments.slice(0, 2).join('/') : (segments[0] ?? '')
+    if (
+      name &&
+      segments.length > (scoped ? 2 : 1) &&
+      !name.startsWith('.') &&
+      !CORE_DATA_DIRS.has(name.toLowerCase())
+    ) {
+      return name
+    }
+    return SIGNALK_CORE_BUCKET
+  }
   return OTHER_BUCKET
 }
 
