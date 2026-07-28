@@ -148,7 +148,7 @@ export function App() {
         {report ? (
           <section aria-labelledby="report-heading" className="flex flex-col gap-2">
             <h2 id="report-heading" className="text-sm font-semibold text-base-content/60">
-              Per-plugin report
+              Report
             </h2>
             <div className="card border border-base-300 bg-base-100 shadow-sm">
               <div className="card-body gap-3 p-5">

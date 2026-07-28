@@ -45,7 +45,7 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
                     className="btn btn-xs btn-success btn-outline"
                     onClick={() => onSelect(profile.id)}
                   >
-                    Report
+                    View
                   </button>
                   <a
                     className="btn btn-xs btn-info btn-outline"
