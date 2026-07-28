@@ -51,9 +51,9 @@ On plugin start, `MetricsCollector` (`src/metrics.ts`) begins collecting and tak
 Notes:
 
 - All units SI per Signal K convention; a `meta` delta with units and descriptions is emitted once at plugin start (`buildMetaDelta` in `src/deltas.ts`).
-- Path prefix configurable (default `performance`); publishing can be disabled entirely, leaving webapp-only access via the `GET /metrics` route.
+- All metrics publish under the fixed `performance.` path prefix; publishing can be disabled entirely, leaving webapp-only access via the `GET /metrics` route.
 - Publishing as deltas is the integration hook: data browser, `signalk-to-influxdb`/Grafana, and alerting plugins all work with zero additional code.
-- Respects the server's hot-path rules: metric paths are precomputed once at start; each publish builds a single object literal (`buildMetricsDelta`).
+- Respects the server's hot-path rules: metric paths are precomputed once at module load; each publish builds a single object literal (`buildMetricsDelta`).
 - The same snapshot (shape: `MetricsSnapshot` in `src/shared/types.ts`, with an ISO `timestamp`) is served by `GET /metrics` and consumed by the webapp.
 
 ## Feature 2: On-demand CPU profiling
@@ -143,7 +143,6 @@ Defined in `src/plugin.ts` with titles, descriptions, and minimums; defaults:
 {
   "publishIntervalSeconds": { "type": "number", "default": 5, "minimum": 1 },
   "publishDeltas": { "type": "boolean", "default": true },
-  "pathPrefix": { "type": "string", "default": "performance" },
   "defaultProfileDurationSeconds": { "type": "number", "default": 30, "minimum": 1 },
   "maxProfileDurationSeconds": { "type": "number", "default": 120, "minimum": 1 },
   "samplingIntervalUs": { "type": "number", "default": 1000, "minimum": 100 },

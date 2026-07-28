@@ -105,15 +105,14 @@ the total are pruned (their cost stays in the ancestors' totals).
 
 ## Configuration
 
-| Option                          | Default       | Description                                      |
-| ------------------------------- | ------------- | ------------------------------------------------ |
-| `publishIntervalSeconds`        | 5             | Metrics sampling/publishing interval             |
-| `publishDeltas`                 | true          | Emit Signal K deltas (off → webapp/HTTP only)    |
-| `pathPrefix`                    | `performance` | Path prefix for published metrics                |
-| `defaultProfileDurationSeconds` | 30            | Capture duration when none is given              |
-| `maxProfileDurationSeconds`     | 120           | Hard cap for a single capture                    |
-| `samplingIntervalUs`            | 1000          | CPU profiler sampling interval                   |
-| `maxStoredProfiles`             | 5             | Stored captures per type; older ones are deleted |
+| Option                          | Default | Description                                      |
+| ------------------------------- | ------- | ------------------------------------------------ |
+| `publishIntervalSeconds`        | 5       | Metrics sampling/publishing interval             |
+| `publishDeltas`                 | true    | Emit Signal K deltas (off → webapp/HTTP only)    |
+| `defaultProfileDurationSeconds` | 30      | Capture duration when none is given              |
+| `maxProfileDurationSeconds`     | 120     | Hard cap for a single capture                    |
+| `samplingIntervalUs`            | 1000    | CPU profiler sampling interval                   |
+| `maxStoredProfiles`             | 5       | Stored captures per type; older ones are deleted |
 
 ## How attribution works
 

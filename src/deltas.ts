@@ -1,14 +1,14 @@
 /**
  * Signal K delta shaping for metrics snapshots.
  *
- * Paths are precomputed once at plugin start; each publish builds a single
+ * Paths are precomputed once at module load; each publish builds a single
  * object literal (the server's hot-path rule: no per-interval allocation
  * churn beyond the delta itself).
  */
 import type { Delta, Path } from '@signalk/server-api'
 import type { MetricsSnapshot } from './shared/types'
 
-export interface MetricPaths {
+interface MetricPaths {
   eventLoopDelayP50: Path
   eventLoopDelayP99: Path
   eventLoopDelayMax: Path
@@ -19,21 +19,19 @@ export interface MetricPaths {
   cpuUtilization: Path
 }
 
-export function buildMetricPaths(prefix: string): MetricPaths {
-  const p = (suffix: string) => `${prefix}.${suffix}` as Path
-  return {
-    eventLoopDelayP50: p('eventLoopDelay.p50'),
-    eventLoopDelayP99: p('eventLoopDelay.p99'),
-    eventLoopDelayMax: p('eventLoopDelay.max'),
-    eventLoopUtilization: p('eventLoopUtilization'),
-    gcPauseTime: p('gc.pauseTime'),
-    memoryHeapUsed: p('memory.heapUsed'),
-    memoryRss: p('memory.rss'),
-    cpuUtilization: p('cpu.utilization'),
-  }
+/** All metrics publish under the fixed `performance.` prefix. */
+const paths: MetricPaths = {
+  eventLoopDelayP50: 'performance.eventLoopDelay.p50' as Path,
+  eventLoopDelayP99: 'performance.eventLoopDelay.p99' as Path,
+  eventLoopDelayMax: 'performance.eventLoopDelay.max' as Path,
+  eventLoopUtilization: 'performance.eventLoopUtilization' as Path,
+  gcPauseTime: 'performance.gc.pauseTime' as Path,
+  memoryHeapUsed: 'performance.memory.heapUsed' as Path,
+  memoryRss: 'performance.memory.rss' as Path,
+  cpuUtilization: 'performance.cpu.utilization' as Path,
 }
 
-export function buildMetricsDelta(paths: MetricPaths, snapshot: MetricsSnapshot): Delta {
+export function buildMetricsDelta(snapshot: MetricsSnapshot): Delta {
   return {
     updates: [
       {
@@ -53,7 +51,7 @@ export function buildMetricsDelta(paths: MetricPaths, snapshot: MetricsSnapshot)
 }
 
 /** Units metadata, emitted once on the first publish (SI units per Signal K convention). */
-export function buildMetaDelta(paths: MetricPaths): Delta {
+export function buildMetaDelta(): Delta {
   return {
     updates: [
       {

@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { CaptureManager } from './capture'
-import { buildMetaDelta, buildMetricPaths, buildMetricsDelta } from './deltas'
+import { buildMetaDelta, buildMetricsDelta } from './deltas'
 import { MetricsCollector } from './metrics'
 import { registerRoutes, type RouteDeps } from './routes'
 import { ProfileStore } from './store'
@@ -17,7 +17,6 @@ export const PLUGIN_ID = 'signalk-performance-monitor'
 export interface PerformanceMonitorConfig {
   publishIntervalSeconds: number
   publishDeltas: boolean
-  pathPrefix: string
   defaultProfileDurationSeconds: number
   maxProfileDurationSeconds: number
   samplingIntervalUs: number
@@ -27,7 +26,6 @@ export interface PerformanceMonitorConfig {
 export const CONFIG_DEFAULTS: PerformanceMonitorConfig = {
   publishIntervalSeconds: 5,
   publishDeltas: true,
-  pathPrefix: 'performance',
   defaultProfileDurationSeconds: 30,
   maxProfileDurationSeconds: 120,
   samplingIntervalUs: 1000,
@@ -50,12 +48,6 @@ const CONFIG_SCHEMA = {
       description:
         'Emit metrics as Signal K deltas (for the data browser, InfluxDB/Grafana, alerting). When off, metrics remain available via the webapp and GET /metrics.',
       default: CONFIG_DEFAULTS.publishDeltas,
-    },
-    pathPrefix: {
-      type: 'string',
-      title: 'Path prefix',
-      description: 'Signal K path prefix for published metrics',
-      default: CONFIG_DEFAULTS.pathPrefix,
     },
     defaultProfileDurationSeconds: {
       type: 'number',
@@ -150,14 +142,12 @@ export function createPlugin(app: ServerAPI): Plugin {
     captureStatusTimer = setInterval(tick, 1000)
   }
 
-  let paths = buildMetricPaths(CONFIG_DEFAULTS.pathPrefix)
-
   const publish = () => {
     try {
       if (!collector) return
       const snapshot = collector.sample()
       if (config.publishDeltas) {
-        app.handleMessage(PLUGIN_ID, buildMetricsDelta(paths, snapshot))
+        app.handleMessage(PLUGIN_ID, buildMetricsDelta(snapshot))
       }
       if (!captures?.status()) {
         setMonitoringStatus()
@@ -176,7 +166,6 @@ export function createPlugin(app: ServerAPI): Plugin {
 
     start(options: object) {
       config = { ...CONFIG_DEFAULTS, ...(options as Partial<PerformanceMonitorConfig>) }
-      paths = buildMetricPaths(config.pathPrefix)
 
       collector = new MetricsCollector()
       collector.start()
@@ -202,7 +191,7 @@ export function createPlugin(app: ServerAPI): Plugin {
       }
 
       if (config.publishDeltas) {
-        app.handleMessage(PLUGIN_ID, buildMetaDelta(paths))
+        app.handleMessage(PLUGIN_ID, buildMetaDelta())
       }
       const intervalMs = Math.max(config.publishIntervalSeconds, 1) * 1000
       publishTimer = setInterval(publish, intervalMs)

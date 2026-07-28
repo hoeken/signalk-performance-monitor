@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMetaDelta, buildMetricPaths, buildMetricsDelta } from '../src/deltas'
+import { buildMetaDelta, buildMetricsDelta } from '../src/deltas'
 import { MetricsCollector } from '../src/metrics'
 import type { MetricsSnapshot } from '../src/shared/types'
 
@@ -70,9 +70,8 @@ describe('delta shaping', () => {
     cpuUtilization: 0.37,
   }
 
-  it('publishes every metric under the configured prefix in one update', () => {
-    const paths = buildMetricPaths('performance')
-    const delta = buildMetricsDelta(paths, snapshot)
+  it('publishes every metric under the performance prefix in one update', () => {
+    const delta = buildMetricsDelta(snapshot)
     expect(delta.updates).toHaveLength(1)
     const update = delta.updates[0]
     if (!('values' in update)) throw new Error('expected a values update')
@@ -88,17 +87,8 @@ describe('delta shaping', () => {
     ])
   })
 
-  it('respects a custom path prefix', () => {
-    const paths = buildMetricPaths('server.perf')
-    const delta = buildMetricsDelta(paths, snapshot)
-    const update = delta.updates[0]
-    if (!('values' in update)) throw new Error('expected a values update')
-    expect(update.values[0].path).toBe('server.perf.eventLoopDelay.p50')
-  })
-
   it('emits SI units metadata for every published path', () => {
-    const paths = buildMetricPaths('performance')
-    const metaDelta = buildMetaDelta(paths)
+    const metaDelta = buildMetaDelta()
     const update = metaDelta.updates[0]
     if (!('meta' in update)) throw new Error('expected a meta update')
     const units = Object.fromEntries(update.meta.map((m) => [m.path, m.value.units]))
