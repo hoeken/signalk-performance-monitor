@@ -51,7 +51,7 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
       </label>
       <button
         type="button"
-        className="btn btn-sm btn-primary"
+        className="btn btn-sm btn-primary btn-outline"
         onClick={() => onStart('cpu', duration)}
       >
         Profile CPU

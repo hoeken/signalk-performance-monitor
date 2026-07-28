@@ -42,17 +42,21 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
                 <div className="flex justify-end gap-1.5">
                   <button
                     type="button"
-                    className="btn btn-xs btn-primary btn-soft"
+                    className="btn btn-xs btn-success btn-outline"
                     onClick={() => onSelect(profile.id)}
                   >
                     Report
                   </button>
-                  <a className="btn btn-xs btn-soft" href={rawProfileUrl(profile.id)} download>
+                  <a
+                    className="btn btn-xs btn-info btn-outline"
+                    href={rawProfileUrl(profile.id)}
+                    download
+                  >
                     JSON
                   </a>
                   <button
                     type="button"
-                    className="btn btn-xs btn-error btn-soft"
+                    className="btn btn-xs btn-error btn-outline"
                     onClick={() => onDelete(profile.id)}
                   >
                     Delete
