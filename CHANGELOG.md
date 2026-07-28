@@ -1,3 +1,14 @@
+# v1.1.0
+
+- HTTP request timing metrics: `performance.http.requestRate` and `performance.http.requestDuration.p50/p99/max`, measured via a PerformanceObserver on `http` entries — every inbound request the server handles is timed with zero instrumentation and no cost while stopped
+- Process resource usage metrics from `process.resourceUsage()`, diffed into per-second rates: `performance.disk.readRate/writeRate`, `performance.cpu.involuntaryContextSwitchRate`, and `performance.memory.majorPageFaultRate`; five new webapp tiles with glossary entries
+- Profile upload: a green Upload button in the webapp restores a previously downloaded profile JSON and rebuilds its per-plugin report, auto-detecting CPU vs allocation profiles. Downloaded profiles now embed capture metadata (ignored by Chrome DevTools/speedscope), so download → upload is lossless
+- Dark mode with a light/dark toggle next to the title — follows the browser's `prefers-color-scheme` by default, remembers an explicit choice, and applies it before first paint
+- Docs panel explaining how to open downloaded profiles in external apps (speedscope, Chrome DevTools, VS Code)
+- Profile download button renamed from "Raw" to "JSON"; downloads are served with a `.json` extension instead of `.cpuprofile`/`.heapprofile`
+- CI fixes: force LF checkout for Windows runners, tolerate `rss` reporting 0 under QEMU emulation, and de-flake the delay-reset test
+- Small wording and button styling tweaks in the webapp
+
 # v1.0.0
 
 Initial release.
