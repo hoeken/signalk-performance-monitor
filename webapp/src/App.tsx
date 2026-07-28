@@ -5,7 +5,15 @@ import type {
   ProfileReport,
   ProfileType,
 } from '../../src/shared/types'
-import { ApiError, deleteProfile, getMetrics, getProfiles, getReport, startProfile } from './api'
+import {
+  ApiError,
+  deleteProfile,
+  getMetrics,
+  getProfiles,
+  getReport,
+  startProfile,
+  uploadProfile,
+} from './api'
 import { formatDateTime } from './format'
 import { Documentation } from './components/Documentation'
 import { MetricsTiles } from './components/MetricsTiles'
@@ -88,6 +96,17 @@ export function App() {
     }
   }
 
+  const handleUpload = async (file: File) => {
+    try {
+      const { id } = await uploadProfile(file)
+      setError(null)
+      await refreshProfiles()
+      setReport(await getReport(id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const handleDelete = async (id: string) => {
     try {
       await deleteProfile(id)
@@ -136,7 +155,11 @@ export function App() {
           </h2>
           <div className="card border border-base-300 bg-base-100 shadow-sm">
             <div className="card-body gap-4 p-5">
-              <ProfileControls running={running} onStart={(type, d) => void handleStart(type, d)} />
+              <ProfileControls
+                running={running}
+                onStart={(type, d) => void handleStart(type, d)}
+                onUpload={(file) => void handleUpload(file)}
+              />
               {profiles ? (
                 <ProfileList
                   profiles={profiles.profiles}

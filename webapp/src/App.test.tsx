@@ -22,6 +22,9 @@ describe('App', () => {
       const url = String(input)
       const method = init?.method ?? 'GET'
       if (url.endsWith('/metrics')) return Promise.resolve(jsonResponse(metricsFixture))
+      if (url.includes('/profile/upload') && method === 'POST') {
+        return Promise.resolve(jsonResponse({ id: 'cpu-uploaded' }))
+      }
       if (url.endsWith('/profile') && method === 'GET') {
         return Promise.resolve(jsonResponse(profileList))
       }
@@ -54,7 +57,7 @@ describe('App', () => {
 
     expect(await screen.findByText('12.3 ms')).toBeInTheDocument()
     expect(await screen.findByText('Memory')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Report' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Documentation' })).toBeInTheDocument()
   })
 
@@ -80,17 +83,17 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const reportButtons = await screen.findAllByRole('button', { name: 'Report' })
+    const reportButtons = await screen.findAllByRole('button', { name: 'View' })
     await user.click(reportButtons[0]!)
 
-    expect(await screen.findByText('Per-plugin report')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Report' })).toBeInTheDocument()
     // The bucket name appears in both the flame graph legend and the table.
     expect(screen.getAllByText('signalk-server (core)').length).toBeGreaterThan(0)
     expect(screen.getByText('61.2%')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Flame graph' })).toBeInTheDocument()
 
     await user.click(reportButtons[0]!)
-    expect(screen.queryByText('Per-plugin report')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Report' })).not.toBeInTheDocument()
   })
 
   it('surfaces admin-authentication errors', async () => {
@@ -100,6 +103,31 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Admin login required/)
+  })
+
+  it('uploads a profile JSON and shows its report', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Upload' })).toBeInTheDocument()
+    const file = new File(
+      [JSON.stringify({ nodes: [], startTime: 0, endTime: 1 })],
+      'cpu-2026-07-28T10-00-00-000Z.json',
+      { type: 'application/json' },
+    )
+    await user.upload(screen.getByLabelText('Upload profile JSON'), file)
+
+    const uploadCall = fetchMock.mock.calls.find(([target]) =>
+      String(target).includes('/profile/upload'),
+    )
+    expect(uploadCall).toBeDefined()
+    expect(String(uploadCall![0])).toContain('filename=cpu-2026-07-28T10-00-00-000Z.json')
+    const init = uploadCall![1] as RequestInit
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/octet-stream' })
+    expect(init.body).toBe(file)
+
+    expect(await screen.findByRole('heading', { name: 'Report' })).toBeInTheDocument()
   })
 
   it('links raw downloads to the raw profile route', async () => {

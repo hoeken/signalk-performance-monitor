@@ -14,13 +14,27 @@ import {
   type CpuProfile,
   type SamplingHeapProfile,
 } from './attribution'
-import { makeProfileId, type ProfileStore } from './store'
+import {
+  capturedAtFromProfileId,
+  embeddedProfileMetaOf,
+  isValidProfileId,
+  makeProfileId,
+  profileTypeOf,
+  type ProfileStore,
+} from './store'
 import type { ProfileType, RunningCapture } from './shared/types'
 
 export class CaptureBusyError extends Error {
   constructor() {
     super('a capture is already running')
     this.name = 'CaptureBusyError'
+  }
+}
+
+export class InvalidProfileError extends Error {
+  constructor() {
+    super('file is not a V8 .cpuprofile or .heapprofile JSON')
+    this.name = 'InvalidProfileError'
   }
 }
 
@@ -32,6 +46,46 @@ export interface CpuCaptureOptions {
 export interface HeapCaptureOptions {
   durationSeconds: number
   samplingIntervalBytes: number
+}
+
+export interface ImportProfileOptions {
+  /** Fallback sampling settings for files without embedded metadata. */
+  samplingIntervalUs: number
+  samplingIntervalBytes: number
+  /** Original filename; a `<id>.json` download name restores the id and capture time. */
+  filename?: string
+}
+
+function isCpuProfile(raw: unknown): raw is CpuProfile {
+  const profile = raw as Partial<CpuProfile> | null
+  return (
+    typeof profile === 'object' &&
+    profile !== null &&
+    Array.isArray(profile.nodes) &&
+    profile.nodes.length > 0 &&
+    typeof profile.nodes[0]?.callFrame === 'object' &&
+    typeof profile.startTime === 'number' &&
+    typeof profile.endTime === 'number'
+  )
+}
+
+function isHeapProfile(raw: unknown): raw is SamplingHeapProfile {
+  const profile = raw as Partial<SamplingHeapProfile> | null
+  return (
+    typeof profile === 'object' &&
+    profile !== null &&
+    typeof profile.head === 'object' &&
+    profile.head !== null &&
+    typeof profile.head.callFrame === 'object' &&
+    typeof profile.head.selfSize === 'number'
+  )
+}
+
+function idFromFilename(filename: string | undefined, type: ProfileType): string | null {
+  if (!filename) return null
+  const base = filename.replace(/\.(json|cpuprofile|heapprofile)$/i, '')
+  if (!isValidProfileId(base) || profileTypeOf(base) !== type) return null
+  return base
 }
 
 export interface CaptureManagerOptions {
@@ -183,6 +237,54 @@ export class CaptureManager {
     } finally {
       this.endCapture(session, state)
     }
+  }
+
+  /**
+   * Store a previously downloaded raw profile, rebuilding its report.
+   * Runs no inspector session, so it is allowed while a capture is running.
+   *
+   * Capture time and sampling settings come from the file's embedded
+   * metadata (written by ProfileStore.save on every capture), falling back
+   * to the download filename and then the configured defaults for files
+   * from other tools or older plugin versions.
+   */
+  async importProfile(raw: unknown, options: ImportProfileOptions): Promise<string> {
+    const type = isCpuProfile(raw) ? 'cpu' : isHeapProfile(raw) ? 'heap' : null
+    if (!type) throw new InvalidProfileError()
+
+    const embedded = embeddedProfileMetaOf(raw)
+    const embeddedId = embedded.id && profileTypeOf(embedded.id) === type ? embedded.id : null
+
+    const now = new Date()
+    const id = embeddedId ?? idFromFilename(options.filename, type) ?? makeProfileId(type, now)
+    const capturedAt = embedded.capturedAt ?? capturedAtFromProfileId(id) ?? now.toISOString()
+
+    const report =
+      type === 'cpu'
+        ? buildCpuReport(
+            raw as CpuProfile,
+            {
+              id,
+              capturedAt,
+              samplingIntervalUs: embedded.samplingIntervalUs ?? options.samplingIntervalUs,
+            },
+            this.options.bucketOptions,
+          )
+        : buildHeapReport(
+            raw as SamplingHeapProfile,
+            // A raw heap profile records no wall-clock duration itself.
+            {
+              id,
+              capturedAt,
+              durationMs: embedded.durationMs ?? 0,
+              samplingIntervalBytes:
+                embedded.samplingIntervalBytes ?? options.samplingIntervalBytes,
+            },
+            this.options.bucketOptions,
+          )
+
+    await this.options.store.save(report, raw)
+    return id
   }
 
   private beginCapture(type: ProfileType, durationSeconds: number): RunningState {

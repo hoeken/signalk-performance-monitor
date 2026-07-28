@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ProfileType, RunningCapture } from '../../../src/shared/types'
 
 const DURATIONS = [10, 30, 60, 120]
@@ -6,10 +6,12 @@ const DURATIONS = [10, 30, 60, 120]
 interface ProfileControlsProps {
   running: RunningCapture | null
   onStart: (type: ProfileType, durationSeconds: number) => void
+  onUpload: (file: File) => void
 }
 
-export function ProfileControls({ running, onStart }: ProfileControlsProps) {
+export function ProfileControls({ running, onStart, onUpload }: ProfileControlsProps) {
   const [duration, setDuration] = useState(30)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   if (running) {
     const progress =
@@ -63,6 +65,26 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
       >
         Profile Memory
       </button>
+      <button
+        type="button"
+        className="btn btn-sm btn-success btn-outline"
+        onClick={() => fileInput.current?.click()}
+      >
+        Upload
+      </button>
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".json,.cpuprofile,.heapprofile,application/json"
+        className="hidden"
+        aria-label="Upload profile JSON"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) onUpload(file)
+          // reset so re-selecting the same file fires onChange again
+          event.target.value = ''
+        }}
+      />
     </div>
   )
 }

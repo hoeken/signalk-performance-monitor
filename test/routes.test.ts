@@ -8,7 +8,13 @@ import path from 'node:path'
 import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CaptureBusyError, type CpuCaptureOptions, type HeapCaptureOptions } from '../src/capture'
+import {
+  CaptureBusyError,
+  InvalidProfileError,
+  type CpuCaptureOptions,
+  type HeapCaptureOptions,
+  type ImportProfileOptions,
+} from '../src/capture'
 import { registerRoutes, type CaptureController, type RouteDeps } from '../src/routes'
 import { ProfileStore } from '../src/store'
 import type { CpuReport, MetricsSnapshot, RunningCapture } from '../src/shared/types'
@@ -26,6 +32,7 @@ class FakeCaptures implements CaptureController {
   running: RunningCapture | null = null
   cpuCalls: CpuCaptureOptions[] = []
   heapCalls: HeapCaptureOptions[] = []
+  importCalls: { raw: unknown; options: ImportProfileOptions }[] = []
 
   status(): RunningCapture | null {
     return this.running
@@ -55,6 +62,14 @@ class FakeCaptures implements CaptureController {
       remainingSeconds: options.durationSeconds,
     }
     return 'heap-fake'
+  }
+
+  async importProfile(raw: unknown, options: ImportProfileOptions): Promise<string> {
+    const looksLikeProfile =
+      raw !== null && typeof raw === 'object' && ('nodes' in raw || 'head' in raw)
+    if (!looksLikeProfile) throw new InvalidProfileError()
+    this.importCalls.push({ raw, options })
+    return 'cpu-imported'
   }
 }
 
@@ -162,6 +177,55 @@ describe('HTTP routes', () => {
     expect(captures.heapCalls).toEqual([{ durationSeconds: 15, samplingIntervalBytes: 32768 }])
   })
 
+  it('POST /profile/upload imports an octet-stream profile with its filename', async () => {
+    const profile = { nodes: [], startTime: 0, endTime: 1000 }
+    const res = await request(app)
+      .post('/profile/upload?filename=cpu-2026-07-01T00-00-00-000Z.json')
+      .set('Content-Type', 'application/octet-stream')
+      .send(JSON.stringify(profile))
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ id: 'cpu-imported' })
+    expect(captures.importCalls).toEqual([
+      {
+        raw: profile,
+        options: {
+          samplingIntervalUs: 1000,
+          samplingIntervalBytes: 32768,
+          filename: 'cpu-2026-07-01T00-00-00-000Z.json',
+        },
+      },
+    ])
+  })
+
+  it('POST /profile/upload also accepts a JSON-parsed body', async () => {
+    const profile = { nodes: [], startTime: 0, endTime: 1000 }
+    const res = await request(app).post('/profile/upload').send(profile)
+
+    expect(res.status).toBe(200)
+    expect(captures.importCalls[0]?.raw).toEqual(profile)
+    expect(captures.importCalls[0]?.options.filename).toBeUndefined()
+  })
+
+  it('POST /profile/upload rejects malformed JSON with 400', async () => {
+    const res = await request(app)
+      .post('/profile/upload')
+      .set('Content-Type', 'application/octet-stream')
+      .send('not json {')
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/not valid JSON/)
+    expect(captures.importCalls).toEqual([])
+  })
+
+  it('POST /profile/upload rejects unrecognized profile shapes with 400', async () => {
+    const res = await request(app)
+      .post('/profile/upload')
+      .set('Content-Type', 'application/octet-stream')
+      .send(JSON.stringify({ hello: 'world' }))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/not a V8/)
+  })
+
   it('GET /profile lists stored profiles and running status', async () => {
     await store.save(makeReport('cpu-a1'), { nodes: [] })
     await request(app).post('/profile').send({})
@@ -184,13 +248,17 @@ describe('HTTP routes', () => {
     expect(missing.status).toBe(404)
   })
 
-  it('GET /profile/:id/raw downloads the raw profile', async () => {
+  it('GET /profile/:id/raw downloads the raw profile with embedded metadata', async () => {
     await store.save(makeReport('cpu-a1'), { nodes: [1, 2, 3] })
 
     const res = await request(app).get('/profile/cpu-a1/raw')
     expect(res.status).toBe(200)
     expect(res.headers['content-disposition']).toBe('attachment; filename="cpu-a1.json"')
-    expect(res.body).toEqual({ nodes: [1, 2, 3] })
+    expect(res.body.nodes).toEqual([1, 2, 3])
+    expect(res.body['signalk-performance-monitor']).toMatchObject({
+      id: 'cpu-a1',
+      capturedAt: '2026-07-28T10:00:00.000Z',
+    })
   })
 
   it('rejects malformed profile ids with 400', async () => {

@@ -2,11 +2,11 @@
  * Integration tests: these connect a real inspector session to the test
  * process and profile it, exactly as the plugin does to the Signal K server.
  */
-import { promises as fs } from 'node:fs'
+import { promises as fs, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CaptureBusyError, CaptureManager } from '../src/capture'
+import { CaptureBusyError, CaptureManager, InvalidProfileError } from '../src/capture'
 import { ProfileStore } from '../src/store'
 import type { CpuReport, HeapReport, RunningCapture } from '../src/shared/types'
 
@@ -126,6 +126,116 @@ describe('CaptureManager', () => {
     const nextId = await manager.startCpu({ durationSeconds: 0.3, samplingIntervalUs: 1000 })
     await waitForIdle(manager)
     expect(await store.getReport(nextId)).not.toBeNull()
+  })
+
+  it('imports a downloaded cpu profile, restoring id and capture time', async () => {
+    const raw: unknown = JSON.parse(
+      readFileSync(path.join(__dirname, 'fixtures', 'sample.cpuprofile'), 'utf8'),
+    )
+    const id = await manager.importProfile(raw, {
+      samplingIntervalUs: 500,
+      samplingIntervalBytes: 32768,
+      filename: 'cpu-2026-07-01T12-30-00-000Z.json',
+    })
+
+    expect(id).toBe('cpu-2026-07-01T12-30-00-000Z')
+    const report = (await store.getReport(id)) as CpuReport
+    expect(report.type).toBe('cpu')
+    expect(report.capturedAt).toBe('2026-07-01T12:30:00.000Z')
+    expect(report.samplingIntervalUs).toBe(500)
+    expect(report.buckets.length).toBeGreaterThan(0)
+    // stored raw keeps the profile intact and gains embedded metadata
+    const stored = JSON.parse((await store.getRaw(id))!.toString()) as Record<string, unknown>
+    expect(stored).toMatchObject(raw as object)
+    expect(stored['signalk-performance-monitor']).toMatchObject({ id })
+  })
+
+  it('round-trips a downloaded capture through import unchanged', async () => {
+    const id = await manager.startCpu({ durationSeconds: 0.3, samplingIntervalUs: 500 })
+    busyWait(200)
+    await waitForIdle(manager)
+    expect(errors).toEqual([])
+    const original = await store.getReport(id)
+    const raw: unknown = JSON.parse((await store.getRaw(id))!.toString())
+    await store.delete(id)
+
+    const importedId = await manager.importProfile(raw, {
+      // both ignored: the file's embedded metadata wins
+      samplingIntervalUs: 9999,
+      samplingIntervalBytes: 9999,
+    })
+
+    expect(importedId).toBe(id)
+    expect(await store.getReport(id)).toEqual(original)
+  })
+
+  it('prefers embedded metadata over the filename on import', async () => {
+    const raw = {
+      head: {
+        callFrame: { functionName: '(root)', url: '' },
+        selfSize: 0,
+        children: [{ callFrame: { functionName: 'alloc', url: 'file:///app.js' }, selfSize: 1024 }],
+      },
+      'signalk-performance-monitor': {
+        id: 'heap-2026-07-02T08-00-00-000Z',
+        type: 'heap',
+        capturedAt: '2026-07-02T08:00:00.000Z',
+        durationMs: 45000,
+        samplingIntervalBytes: 4096,
+      },
+    }
+    const id = await manager.importProfile(raw, {
+      samplingIntervalUs: 1000,
+      samplingIntervalBytes: 32768,
+      filename: 'heap-2026-07-03T09-00-00-000Z.json',
+    })
+
+    expect(id).toBe('heap-2026-07-02T08-00-00-000Z')
+    const report = (await store.getReport(id)) as HeapReport
+    expect(report.capturedAt).toBe('2026-07-02T08:00:00.000Z')
+    expect(report.durationMs).toBe(45000)
+    expect(report.samplingIntervalBytes).toBe(4096)
+  })
+
+  it('imports a heap profile under a fresh id when the filename does not match', async () => {
+    const raw = {
+      head: {
+        callFrame: { functionName: '(root)', url: '' },
+        selfSize: 0,
+        children: [{ callFrame: { functionName: 'alloc', url: 'file:///app.js' }, selfSize: 2048 }],
+      },
+    }
+    const id = await manager.importProfile(raw, {
+      samplingIntervalUs: 1000,
+      samplingIntervalBytes: 4096,
+      filename: 'my profile (1).json',
+    })
+
+    expect(id).toMatch(/^heap-/)
+    const report = (await store.getReport(id)) as HeapReport
+    expect(report.type).toBe('heap')
+    expect(report.samplingIntervalBytes).toBe(4096)
+    expect(report.totalBytes).toBe(2048)
+  })
+
+  it('rejects a cpu-named upload whose content is a heap profile', async () => {
+    const raw = { head: { callFrame: { functionName: '(root)', url: '' }, selfSize: 0 } }
+    const id = await manager.importProfile(raw, {
+      samplingIntervalUs: 1000,
+      samplingIntervalBytes: 32768,
+      filename: 'cpu-2026-07-01T12-30-00-000Z.json',
+    })
+    // type comes from the content; the mismatched filename id is ignored
+    expect(id).toMatch(/^heap-/)
+  })
+
+  it('rejects files that are not V8 profiles', async () => {
+    for (const raw of [null, 'hello', 42, {}, { nodes: 'nope' }, { head: { selfSize: 1 } }]) {
+      await expect(
+        manager.importProfile(raw, { samplingIntervalUs: 1000, samplingIntervalBytes: 32768 }),
+      ).rejects.toThrow(InvalidProfileError)
+    }
+    expect(await store.list()).toEqual([])
   })
 
   it('reports remaining seconds while running', async () => {

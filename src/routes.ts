@@ -10,7 +10,13 @@
  * plugin has started.
  */
 import type { IRouter, Request, Response } from 'express'
-import { CaptureBusyError, type CpuCaptureOptions, type HeapCaptureOptions } from './capture'
+import {
+  CaptureBusyError,
+  InvalidProfileError,
+  type CpuCaptureOptions,
+  type HeapCaptureOptions,
+  type ImportProfileOptions,
+} from './capture'
 import { isValidProfileId } from './store'
 import type {
   MetricsSnapshot,
@@ -21,11 +27,18 @@ import type {
 
 export const DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES = 32768
 
+/**
+ * Uploads bypass the server's JSON body parser (the webapp sends
+ * application/octet-stream), so this route enforces its own size cap.
+ */
+export const MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
 /** The slice of CaptureManager the routes need (fakeable in tests). */
 export interface CaptureController {
   status(): RunningCapture | null
   startCpu(options: CpuCaptureOptions): Promise<string>
   startHeap(options: HeapCaptureOptions): Promise<string>
+  importProfile(raw: unknown, options: ImportProfileOptions): Promise<string>
 }
 
 export interface ProfileReader {
@@ -133,6 +146,39 @@ export function registerRoutes(
     }),
   )
 
+  router.post(
+    '/profile/upload',
+    wrap(async (deps, req, res) => {
+      let raw: unknown
+      try {
+        raw = await readUploadedJson(req)
+      } catch (error) {
+        if (error instanceof UploadTooLargeError) {
+          res.status(413).json({ error: error.message })
+          return
+        }
+        res.status(400).json({ error: 'request body is not valid JSON' })
+        return
+      }
+
+      const filename = typeof req.query.filename === 'string' ? req.query.filename : undefined
+      try {
+        const id = await deps.captures.importProfile(raw, {
+          samplingIntervalUs: deps.options.samplingIntervalUs,
+          samplingIntervalBytes: DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
+          filename,
+        })
+        res.json({ id })
+      } catch (error) {
+        if (error instanceof InvalidProfileError) {
+          res.status(400).json({ error: error.message })
+          return
+        }
+        throw error
+      }
+    }),
+  )
+
   router.get(
     '/profile',
     wrap(async (deps, _req, res) => {
@@ -191,6 +237,52 @@ function asBody(req: Request): Record<string, unknown> {
   const body: unknown = req.body
   if (body && typeof body === 'object') return body as Record<string, unknown>
   return {}
+}
+
+class UploadTooLargeError extends Error {
+  constructor() {
+    super(`upload exceeds ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`)
+    this.name = 'UploadTooLargeError'
+  }
+}
+
+/**
+ * The uploaded profile JSON, however it arrived: already parsed by a JSON
+ * body parser, buffered by a raw body parser, or still on the request stream
+ * (the webapp sends application/octet-stream so JSON parser limits don't
+ * apply to multi-megabyte profiles).
+ */
+async function readUploadedJson(req: Request): Promise<unknown> {
+  const body: unknown = req.body
+  if (Buffer.isBuffer(body)) return JSON.parse(body.toString('utf8'))
+  if (body && typeof body === 'object' && Object.keys(body).length > 0) return body
+  const buffered = await readRequestBody(req, MAX_UPLOAD_BYTES)
+  return JSON.parse(buffered.toString('utf8'))
+}
+
+function readRequestBody(req: Request, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    let failed = false
+    req.on('data', (chunk: Buffer) => {
+      if (failed) return
+      size += chunk.length
+      if (size > maxBytes) {
+        failed = true
+        reject(new UploadTooLargeError())
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (!failed) resolve(Buffer.concat(chunks))
+    })
+    req.on('error', (error) => {
+      failed = true
+      reject(error)
+    })
+  })
 }
 
 async function startCapture(res: Response, start: () => Promise<string>): Promise<void> {

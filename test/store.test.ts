@@ -2,7 +2,13 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isValidProfileId, makeProfileId, ProfileStore } from '../src/store'
+import {
+  capturedAtFromProfileId,
+  embeddedProfileMetaOf,
+  isValidProfileId,
+  makeProfileId,
+  ProfileStore,
+} from '../src/store'
 import type { CpuReport, HeapReport } from '../src/shared/types'
 
 function makeReport(id: string, capturedAt: string): CpuReport {
@@ -32,6 +38,14 @@ describe('profile ids', () => {
     expect(isValidProfileId('gpu-2026')).toBe(false)
     expect(isValidProfileId('')).toBe(false)
   })
+
+  it('recovers the capture timestamp embedded in an id', () => {
+    const date = new Date('2026-07-28T10:15:30.123Z')
+    expect(capturedAtFromProfileId(makeProfileId('cpu', date))).toBe(date.toISOString())
+    expect(capturedAtFromProfileId(makeProfileId('heap', date))).toBe(date.toISOString())
+    expect(capturedAtFromProfileId('cpu-fake')).toBeNull()
+    expect(capturedAtFromProfileId('cpu-2026-99-99T10-15-30-123Z')).toBeNull()
+  })
 })
 
 describe('ProfileStore', () => {
@@ -45,14 +59,39 @@ describe('ProfileStore', () => {
     await fs.rm(dir, { recursive: true, force: true })
   })
 
-  it('saves raw profile and report side by side', async () => {
+  it('saves the raw profile with embedded capture metadata beside the report', async () => {
     const store = new ProfileStore(path.join(dir, 'nested'), 5)
     await store.save(makeReport('cpu-a1', '2026-07-28T10:00:00.000Z'), { nodes: [] })
 
     const report = await store.getReport('cpu-a1')
     expect(report?.id).toBe('cpu-a1')
     const raw = await store.getRaw('cpu-a1')
-    expect(JSON.parse(raw!.toString())).toEqual({ nodes: [] })
+    expect(JSON.parse(raw!.toString())).toEqual({
+      nodes: [],
+      'signalk-performance-monitor': {
+        id: 'cpu-a1',
+        type: 'cpu',
+        capturedAt: '2026-07-28T10:00:00.000Z',
+        durationMs: 1000,
+        samplingIntervalUs: 1000,
+      },
+    })
+  })
+
+  it('validates embedded metadata field by field', () => {
+    expect(embeddedProfileMetaOf({ nodes: [] })).toEqual({})
+    expect(embeddedProfileMetaOf(null)).toEqual({})
+    expect(embeddedProfileMetaOf({ 'signalk-performance-monitor': 'junk' })).toEqual({})
+    expect(
+      embeddedProfileMetaOf({
+        'signalk-performance-monitor': {
+          id: '../evil',
+          capturedAt: 'not a date',
+          durationMs: -5,
+          samplingIntervalUs: 250,
+        },
+      }),
+    ).toEqual({ samplingIntervalUs: 250 })
   })
 
   it('lists profiles most recent first with raw sizes', async () => {

@@ -51,6 +51,16 @@ export const startProfile = (type: ProfileType, durationSeconds: number) =>
     body: JSON.stringify({ duration: durationSeconds }),
   })
 
+// Sent as octet-stream so JSON body-parser size limits don't apply to
+// multi-megabyte profiles; the filename lets the server restore the
+// original id and capture time of a re-uploaded download.
+export const uploadProfile = (file: File) =>
+  request<StartProfileResponse>(`/profile/upload?filename=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+
 export const getReport = (id: string) => request<ProfileReport>(`/profile/${id}/report`)
 
 export const deleteProfile = (id: string) => request<void>(`/profile/${id}`, { method: 'DELETE' })
