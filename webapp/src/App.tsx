@@ -73,6 +73,10 @@ export function App() {
   }
 
   const handleSelect = async (id: string) => {
+    if (report?.id === id) {
+      setReport(null)
+      return
+    }
     try {
       setReport(await getReport(id))
       setError(null)

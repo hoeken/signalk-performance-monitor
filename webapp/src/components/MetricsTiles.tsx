@@ -9,7 +9,7 @@ interface TileProps {
 
 function Tile({ label, value, detail }: TileProps) {
   return (
-    <div className="stat rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="stat content-start rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="stat-title text-xs whitespace-normal">{label}</div>
       <div className="stat-value text-2xl">{value}</div>
       {detail ? <div className="stat-desc whitespace-normal">{detail}</div> : null}

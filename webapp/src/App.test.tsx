@@ -75,7 +75,7 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Profile CPU' })).not.toBeInTheDocument()
   })
 
-  it('opens the per-plugin report for a stored profile', async () => {
+  it('toggles the per-plugin report for a stored profile', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -85,6 +85,9 @@ describe('App', () => {
     expect(await screen.findByText('Per-plugin report')).toBeInTheDocument()
     expect(screen.getByText('signalk-server (core)')).toBeInTheDocument()
     expect(screen.getByText('61.2%')).toBeInTheDocument()
+
+    await user.click(reportButtons[0]!)
+    expect(screen.queryByText('Per-plugin report')).not.toBeInTheDocument()
   })
 
   it('surfaces admin-authentication errors', async () => {
