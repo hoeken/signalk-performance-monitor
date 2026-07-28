@@ -1,12 +1,13 @@
 {
   "name": "signalk-performance-monitor",
   "version": "0.5.0",
-  "description": "Always-on event-loop metrics and on-demand CPU/allocation profiling for Signal K server, with per-plugin attribution",
+  "description": "Always-on event-loop metrics and on-demand CPU/allocation profiling for Signal K server",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "public"
+    "public",
+    "docs/screenshots"
   ],
   "scripts": {
     "build": "npm run build:plugin && npm run build:webapp",
@@ -38,7 +39,12 @@
   "license": "MIT",
   "signalk": {
     "displayName": "Performance Monitor",
-    "appIcon": "icon.png"
+    "appIcon": "icon.png",
+    "screenshots": [
+      "./docs/screenshots/home.png",
+      "./docs/screenshots/cpu.png",
+      "./docs/screenshots/memory.png"
+    ]
   },
   "repository": {
     "type": "git",
