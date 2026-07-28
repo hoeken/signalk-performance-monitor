@@ -7,6 +7,7 @@ import type {
 } from '../../src/shared/types'
 import { ApiError, deleteProfile, getMetrics, getProfiles, getReport, startProfile } from './api'
 import { formatDateTime } from './format'
+import { Documentation } from './components/Documentation'
 import { MetricsTiles } from './components/MetricsTiles'
 import { ProfileControls } from './components/ProfileControls'
 import { ProfileList } from './components/ProfileList'
@@ -156,6 +157,13 @@ export function App() {
             </div>
           </section>
         ) : null}
+
+        <section aria-labelledby="documentation-heading" className="flex flex-col gap-2">
+          <h2 id="documentation-heading" className="text-sm font-semibold text-base-content/60">
+            Documentation
+          </h2>
+          <Documentation />
+        </section>
       </div>
     </div>
   )

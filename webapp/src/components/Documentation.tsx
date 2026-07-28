@@ -1,0 +1,148 @@
+import type { ReactNode } from 'react'
+
+/**
+ * Static help panels: how to drive the plugin, a glossary of every term
+ * shown in the UI, and guidance for reading the numbers. Collapsed by
+ * default so the docs don't crowd the live data.
+ */
+
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="collapse-arrow collapse border border-base-300 bg-base-100 shadow-sm">
+      <summary className="collapse-title font-medium">{title}</summary>
+      <div className="collapse-content flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
+        {children}
+      </div>
+    </details>
+  )
+}
+
+function Term({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="font-semibold text-base-content">{name}</dt>
+      <dd>{children}</dd>
+    </>
+  )
+}
+
+export function Documentation() {
+  return (
+    <div className="flex flex-col gap-2">
+      <Panel title="How to use this plugin">
+        <p>
+          The live metrics above are always on and update every few seconds; collecting them costs
+          next to nothing. The same values are published as Signal K deltas under{' '}
+          <code>performance.*</code>, so you can chart them with <code>signalk-to-influxdb</code>
+          /Grafana or wire them into alerting plugins.
+        </p>
+        <p>
+          When a number looks wrong, capture a profile to find out who is responsible. Pick a
+          duration long enough to cover the symptom, then <strong>Profile CPU</strong> (where
+          processor time goes) or <strong>Profile Memory</strong> (which code allocates). The server
+          keeps serving throughout — the sampling profiler adds a few percent of overhead only while
+          the capture runs.
+        </p>
+        <p>
+          Finished captures appear in the list. <strong>Report</strong> opens the per-plugin
+          breakdown and flame graph (click again to close), <strong>Raw</strong> downloads the
+          original <code>.cpuprofile</code>/<code>.heapprofile</code> for Chrome DevTools or{' '}
+          <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">
+            speedscope
+          </a>
+          , and <strong>Delete</strong> removes it. The oldest capture of each type is dropped
+          automatically once the configured limit is reached.
+        </p>
+        <p>
+          Two habits pay off: profile while the problem is actually happening, and keep one capture
+          from a calm period as a baseline to compare against.
+        </p>
+      </Panel>
+
+      <Panel title="What the terms mean">
+        <dl className="flex flex-col gap-x-4 gap-y-1 sm:grid sm:grid-cols-[max-content_1fr]">
+          <Term name="Loop delay (p50 / p99 / max)">
+            Signal K runs everything — delta processing, WebSockets, every plugin — on a single
+            event loop. Delay measures how late that loop gets to scheduled work, i.e. how long
+            something blocked it. p50 is the typical sample, p99 the near-worst (99% of samples were
+            faster), max the single worst stall since the last update.
+          </Term>
+          <Term name="Loop utilization">
+            The share of time the event loop spent busy executing JavaScript rather than idle
+            waiting for work. Values near 100% mean no headroom left.
+          </Term>
+          <Term name="CPU">
+            Process CPU time divided by wall-clock time over the last interval — roughly how much of
+            one processor core the whole server is using.
+          </Term>
+          <Term name="GC pause / interval">
+            Time spent paused for JavaScript garbage collection during the last publish interval.
+            Persistently high values indicate heavy allocation churn.
+          </Term>
+          <Term name="Heap used / RSS">
+            Heap used is the memory held by live JavaScript objects. RSS (resident set size) is the
+            total RAM footprint of the server process — heap plus buffers, native code, and the
+            JavaScript engine&apos;s own overhead.
+          </Term>
+          <Term name="CPU profile">
+            A statistical capture that samples the call stack every 1 ms by default. Time per
+            function is estimated from how often it appears in the samples.
+          </Term>
+          <Term name="Memory profile">
+            Samples the allocating call stack roughly every 32 KiB allocated (by default). It
+            measures memory allocated during the capture — including memory freed since — not what
+            is currently held.
+          </Term>
+          <Term name="Bucket">
+            Who a cost is attributed to, decided by source file: an npm package (usually a plugin),{' '}
+            <code>signalk-server (core)</code>, <code>node runtime</code>, or the engine&apos;s
+            synthetic frames — <code>(idle)</code> for time with nothing to do,{' '}
+            <code>(garbage collector)</code>, and <code>(program)</code> for engine-internal work.
+          </Term>
+          <Term name="Self time / self memory">
+            The cost of a function&apos;s (or bucket&apos;s) own code, excluding functions it
+            called.
+          </Term>
+          <Term name="Flame graph">
+            The capture&apos;s call tree with the root at the top. A frame&apos;s width is its total
+            cost — self plus everything called beneath it — and its color follows the bucket legend.
+            Click a frame to zoom into it, click an ancestor or Reset zoom to zoom back out, and
+            hover (or focus with the keyboard) for exact numbers.
+          </Term>
+        </dl>
+      </Panel>
+
+      <Panel title="How to interpret the data">
+        <p>
+          A healthy server is mostly idle: loop-delay p99 of a few milliseconds, low loop
+          utilization, and <code>(idle)</code> dominating CPU reports. Loop delay is the number your
+          clients feel — because everything shares one loop, a 200 ms stall pauses every WebSocket
+          and REST consumer at once.
+        </p>
+        <p>
+          High loop delay with <em>low</em> CPU points at occasional long synchronous work (a big
+          file read, parsing a huge JSON payload): watch the max value and use a longer capture to
+          catch the culprit in the act. High loop delay with <em>high</em> utilization and CPU is
+          plain overload — the CPU report&apos;s bucket table shows which plugin to blame.
+        </p>
+        <p>
+          In a report, the share bars rank the buckets; expand a row to see its hottest functions. A
+          big <code>(idle)</code> share is good. A noticeable <code>(garbage collector)</code> share
+          means allocation churn — run a Memory profile to see who allocates.
+        </p>
+        <p>
+          For suspected memory leaks, watch heap used over hours (the published deltas make this
+          easy in Grafana). An allocation profile shows who allocates during the capture — heavy
+          allocators and leakers are usually the same code, but confirm against the long-term trend.
+          RSS sitting well above heap used is normal on its own, not a leak.
+        </p>
+        <p>
+          Keep the limits in mind: the numbers are statistical estimates from sampling, so rare
+          sub-millisecond functions can be missed entirely; only the server&apos;s main thread is
+          profiled (child processes are invisible); and a plugin that bundles its dependencies
+          absorbs their cost into its own bucket.
+        </p>
+      </Panel>
+    </div>
+  )
+}

@@ -55,6 +55,7 @@ describe('App', () => {
     expect(await screen.findByText('12.3 ms')).toBeInTheDocument()
     expect(await screen.findByText('Memory')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Report' })).toHaveLength(2)
+    expect(screen.getByRole('heading', { name: 'Documentation' })).toBeInTheDocument()
   })
 
   it('starts a CPU capture and switches to progress display', async () => {
