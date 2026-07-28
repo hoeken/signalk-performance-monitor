@@ -48,7 +48,7 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
                     Report
                   </button>
                   <a className="btn btn-xs btn-soft" href={rawProfileUrl(profile.id)} download>
-                    Raw
+                    JSON
                   </a>
                   <button
                     type="button"

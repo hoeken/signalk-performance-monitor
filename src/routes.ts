@@ -11,7 +11,7 @@
  */
 import type { IRouter, Request, Response } from 'express'
 import { CaptureBusyError, type CpuCaptureOptions, type HeapCaptureOptions } from './capture'
-import { isValidProfileId, profileTypeOf, rawExtension } from './store'
+import { isValidProfileId } from './store'
 import type {
   MetricsSnapshot,
   ProfileListEntry,
@@ -167,10 +167,7 @@ export function registerRoutes(
         res.status(404).json({ error: 'profile not found' })
         return
       }
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${id}${rawExtension(profileTypeOf(id))}"`,
-      )
+      res.setHeader('Content-Disposition', `attachment; filename="${id}.json"`)
       res.type('application/json').send(raw)
     }),
   )

@@ -45,8 +45,8 @@ export function Documentation() {
         </p>
         <p>
           Finished captures appear in the list. <strong>Report</strong> opens the per-plugin
-          breakdown and flame graph (click again to close), <strong>Raw</strong> downloads the
-          original <code>.cpuprofile</code>/<code>.heapprofile</code> for Chrome DevTools or{' '}
+          breakdown and flame graph (click again to close), <strong>JSON</strong> downloads the raw
+          profile as <code>.json</code> for Chrome DevTools or{' '}
           <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">
             speedscope
           </a>

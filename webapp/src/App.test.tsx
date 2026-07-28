@@ -104,7 +104,7 @@ describe('App', () => {
 
   it('links raw downloads to the raw profile route', async () => {
     render(<App />)
-    const rawLinks = await screen.findAllByRole('link', { name: 'Raw' })
+    const rawLinks = await screen.findAllByRole('link', { name: 'JSON' })
     expect(rawLinks[0]).toHaveAttribute(
       'href',
       '/plugins/signalk-performance-monitor/profile/cpu-2026-07-28T10-00-00-000Z/raw',

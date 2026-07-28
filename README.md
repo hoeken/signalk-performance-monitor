@@ -27,7 +27,7 @@ modifications, no changes to other plugins.**
   (unsafe on memory-constrained hardware).
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
-  per-plugin table with share bars and expandable top functions, raw `.cpuprofile`
+  per-plugin table with share bars and expandable top functions, raw profile JSON
   download (opens in Chrome DevTools or [speedscope](https://www.speedscope.app/)).
 
 ## Install
@@ -68,7 +68,7 @@ function names. Base: `/plugins/signalk-performance-monitor`.
 | POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`              |
 | GET    | `/profile`            | Stored profiles + status of any running capture                                          |
 | GET    | `/profile/:id/report` | Aggregated per-plugin report                                                             |
-| GET    | `/profile/:id/raw`    | Raw `.cpuprofile` / `.heapprofile` download                                              |
+| GET    | `/profile/:id/raw`    | Raw profile download (`.json`)                                                           |
 | DELETE | `/profile/:id`        | Delete a stored profile                                                                  |
 
 Example report:

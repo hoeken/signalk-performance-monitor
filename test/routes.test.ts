@@ -189,7 +189,7 @@ describe('HTTP routes', () => {
 
     const res = await request(app).get('/profile/cpu-a1/raw')
     expect(res.status).toBe(200)
-    expect(res.headers['content-disposition']).toBe('attachment; filename="cpu-a1.cpuprofile"')
+    expect(res.headers['content-disposition']).toBe('attachment; filename="cpu-a1.json"')
     expect(res.body).toEqual({ nodes: [1, 2, 3] })
   })
 

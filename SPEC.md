@@ -125,7 +125,7 @@ All routes registered via `registerWithRouter` directly on the router (`src/rout
 | POST   | `/profile`            | Start CPU capture; returns `{ id }`; 409 if any capture is running; 400 on invalid duration/interval                    |
 | GET    | `/profile`            | `{ running, profiles }` — status of any in-flight capture (with `remainingSeconds`) + stored list (with `rawSizeBytes`) |
 | GET    | `/profile/:id/report` | Aggregated per-plugin report (CPU or heap); 404 if unknown                                                              |
-| GET    | `/profile/:id/raw`    | Raw `.cpuprofile`/`.heapprofile` as attachment (opens in Chrome DevTools / speedscope)                                  |
+| GET    | `/profile/:id/raw`    | Raw profile as `.json` attachment (opens in Chrome DevTools / speedscope)                                               |
 | DELETE | `/profile/:id`        | Delete a stored profile; 204 on success, 404 if unknown                                                                 |
 | POST   | `/heap-profile`       | Start allocation capture, same shape (`samplingIntervalBytes` instead of `samplingIntervalUs`)                          |
 
