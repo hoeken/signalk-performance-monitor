@@ -16,22 +16,20 @@ const frame = (url: string, functionName = 'fn') => ({ url, functionName })
 
 describe('bucketForFrame', () => {
   it('buckets plain packages under node_modules', () => {
-    expect(
-      bucketForFrame(frame('/home/pi/.signalk/node_modules/signalk-derived-data/index.js')),
-    ).toBe('signalk-derived-data')
+    expect(bucketForFrame(frame('/data/.signalk/node_modules/signalk-derived-data/index.js'))).toBe(
+      'signalk-derived-data',
+    )
   })
 
   it('buckets scoped packages with both segments', () => {
     expect(
-      bucketForFrame(frame('/home/pi/.signalk/node_modules/@signalk/aisreporter/dist/index.js')),
+      bucketForFrame(frame('/data/.signalk/node_modules/@signalk/aisreporter/dist/index.js')),
     ).toBe('@signalk/aisreporter')
   })
 
   it('takes the last node_modules segment for nested dependencies', () => {
     expect(
-      bucketForFrame(
-        frame('/home/pi/.signalk/node_modules/plugin-a/node_modules/lodash/lodash.js'),
-      ),
+      bucketForFrame(frame('/data/.signalk/node_modules/plugin-a/node_modules/lodash/lodash.js')),
     ).toBe('lodash')
   })
 
@@ -50,7 +48,7 @@ describe('bucketForFrame', () => {
   })
 
   it('decodes percent-encoded file URLs', () => {
-    expect(bucketForFrame(frame('file:///home/pi/My%20Boat/node_modules/foo/index.js'))).toBe('foo')
+    expect(bucketForFrame(frame('file:///data/My%20Boat/node_modules/foo/index.js'))).toBe('foo')
   })
 
   it('handles Windows-style backslash paths', () => {
@@ -66,19 +64,17 @@ describe('bucketForFrame', () => {
   })
 
   it('maps files under a configured serverRoot to the core bucket', () => {
-    const options = { serverRoot: '/home/user/src/signalk-server' }
-    expect(bucketForFrame(frame('/home/user/src/signalk-server/lib/index.js'), options)).toBe(
+    const options = { serverRoot: '/usr/src/signalk-server' }
+    expect(bucketForFrame(frame('/usr/src/signalk-server/lib/index.js'), options)).toBe(
       SIGNALK_CORE_BUCKET,
     )
-    expect(bucketForFrame(frame('/home/user/src/other-project/lib/index.js'), options)).toBe(
-      OTHER_BUCKET,
-    )
+    expect(bucketForFrame(frame('/usr/src/other-project/lib/index.js'), options)).toBe(OTHER_BUCKET)
   })
 
   it('prefers the node_modules rule over serverRoot for plugins inside the server tree', () => {
-    const options = { serverRoot: '/home/user/src/signalk-server' }
+    const options = { serverRoot: '/usr/src/signalk-server' }
     expect(
-      bucketForFrame(frame('/home/user/src/signalk-server/node_modules/foo/index.js'), options),
+      bucketForFrame(frame('/usr/src/signalk-server/node_modules/foo/index.js'), options),
     ).toBe('foo')
   })
 
@@ -100,7 +96,7 @@ describe('bucketForFrame', () => {
   })
 
   it('buckets non-server files outside node_modules as other', () => {
-    expect(bucketForFrame(frame('/home/pi/scripts/tool.js'))).toBe(OTHER_BUCKET)
+    expect(bucketForFrame(frame('/data/scripts/tool.js'))).toBe(OTHER_BUCKET)
   })
 })
 
@@ -216,7 +212,7 @@ describe('buildHeapReport', () => {
         {
           callFrame: {
             functionName: 'allocateBuffers',
-            url: '/home/pi/.signalk/node_modules/plugin-x/index.js',
+            url: '/data/.signalk/node_modules/plugin-x/index.js',
           },
           selfSize: 2048,
           children: [
@@ -264,7 +260,7 @@ describe('buildHeapReport', () => {
     expect(pluginX?.topFunctions).toEqual([
       {
         name: 'allocateBuffers',
-        url: '/home/pi/.signalk/node_modules/plugin-x/index.js',
+        url: '/data/.signalk/node_modules/plugin-x/index.js',
         selfBytes: 2048,
       },
     ])

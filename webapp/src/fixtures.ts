@@ -48,7 +48,7 @@ export const cpuReportFixture: CpuReport = {
       topFunctions: [
         {
           name: 'recalculate',
-          url: '/home/pi/.signalk/node_modules/signalk-derived-data/index.js',
+          url: '/data/.signalk/node_modules/signalk-derived-data/index.js',
           selfTimeMs: 4200,
         },
       ],
@@ -84,7 +84,7 @@ export const cpuReportFixture: CpuReport = {
         bucket: 'signalk-derived-data',
         self: 4_200_000,
         total: 4_200_000,
-        url: '/home/pi/.signalk/node_modules/signalk-derived-data/index.js',
+        url: '/data/.signalk/node_modules/signalk-derived-data/index.js',
       },
       {
         name: 'readFileHandle',
@@ -112,7 +112,7 @@ export const heapReportFixture: HeapReport = {
       topFunctions: [
         {
           name: 'allocateBuffers',
-          url: '/home/pi/.signalk/node_modules/plugin-x/index.js',
+          url: '/data/.signalk/node_modules/plugin-x/index.js',
           selfBytes: 3_145_728,
         },
       ],
@@ -131,7 +131,7 @@ export const heapReportFixture: HeapReport = {
         bucket: 'plugin-x',
         self: 3_145_728,
         total: 4_194_304,
-        url: '/home/pi/.signalk/node_modules/plugin-x/index.js',
+        url: '/data/.signalk/node_modules/plugin-x/index.js',
         children: [
           {
             name: 'concat',
