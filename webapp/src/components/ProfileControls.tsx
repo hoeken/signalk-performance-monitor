@@ -19,8 +19,8 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
     return (
       <div className="flex w-full items-center gap-3">
         <span className="text-sm whitespace-nowrap">
-          {running.type === 'heap' ? 'Heap profiling' : 'CPU profiling'}: {running.remainingSeconds}
-          s remaining
+          {running.type === 'heap' ? 'Memory profiling' : 'CPU profiling'}:{' '}
+          {running.remainingSeconds}s remaining
         </span>
         <progress
           className="progress progress-primary flex-1"
@@ -61,7 +61,7 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
         className="btn btn-sm btn-primary btn-outline"
         onClick={() => onStart('heap', duration)}
       >
-        Profile allocations
+        Profile Memory
       </button>
     </div>
   )

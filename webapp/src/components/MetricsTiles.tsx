@@ -4,15 +4,19 @@ import { formatBytes, formatMs, formatPercent } from '../format'
 interface TileProps {
   label: string
   value: string
-  detail?: string
+  details?: string[]
 }
 
-function Tile({ label, value, detail }: TileProps) {
+function Tile({ label, value, details }: TileProps) {
   return (
     <div className="stat content-start rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="stat-title text-xs whitespace-normal">{label}</div>
       <div className="stat-value text-2xl">{value}</div>
-      {detail ? <div className="stat-desc whitespace-normal">{detail}</div> : null}
+      {details?.map((detail) => (
+        <div key={detail} className="stat-desc whitespace-nowrap">
+          {detail}
+        </div>
+      ))}
     </div>
   )
 }
@@ -27,9 +31,10 @@ export function MetricsTiles({ metrics }: { metrics: MetricsSnapshot }) {
       <Tile
         label="Loop delay p99"
         value={formatMs(metrics.eventLoopDelay.p99)}
-        detail={`p50 ${formatMs(metrics.eventLoopDelay.p50)} · max ${formatMs(
-          metrics.eventLoopDelay.max,
-        )}`}
+        details={[
+          `p50 ${formatMs(metrics.eventLoopDelay.p50)}`,
+          `max ${formatMs(metrics.eventLoopDelay.max)}`,
+        ]}
       />
       <Tile label="Loop utilization" value={formatPercent(metrics.eventLoopUtilization)} />
       <Tile label="CPU" value={formatPercent(metrics.cpuUtilization)} />
@@ -37,7 +42,7 @@ export function MetricsTiles({ metrics }: { metrics: MetricsSnapshot }) {
       <Tile
         label="Heap used"
         value={formatBytes(metrics.memory.heapUsed)}
-        detail={`RSS ${formatBytes(metrics.memory.rss)}`}
+        details={[`RSS ${formatBytes(metrics.memory.rss)}`]}
       />
     </div>
   )

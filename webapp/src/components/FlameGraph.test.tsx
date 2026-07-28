@@ -24,7 +24,7 @@ describe('FlameGraph', () => {
     render(<FlameGraph root={cpuFlame} type="cpu" />)
     expect(
       screen.getByRole('button', {
-        name: 'recalculate — signalk-derived-data — 4.20 s (14.0% of capture)',
+        name: 'recalculate — signalk-derived-data — 4,200.0 ms (14.0% of capture)',
       }),
     ).toBeInTheDocument()
   })
@@ -85,9 +85,9 @@ describe('FlameGraph', () => {
     })
 
     const tooltip = screen.getByRole('status')
-    expect(tooltip).toHaveTextContent('4.20 s · 14.0% of view · 14.0% of capture')
+    expect(tooltip).toHaveTextContent('4,200.0 ms · 14.0% of view · 14.0% of capture')
     expect(tooltip).toHaveTextContent('recalculate')
-    expect(tooltip).toHaveTextContent('signalk-derived-data · self 4.20 s')
+    expect(tooltip).toHaveTextContent('signalk-derived-data · self 4,200.0 ms')
     expect(tooltip).toHaveTextContent(
       '/home/pi/.signalk/node_modules/signalk-derived-data/index.js',
     )

@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import type { ProfileReport } from '../../../src/shared/types'
-import { formatBytes, formatDateTime } from '../format'
+import { formatBytes, formatDateTime, formatMs } from '../format'
 import { FlameGraph } from './FlameGraph'
 
 interface ReportRow {
@@ -51,14 +51,14 @@ export function ReportView({ report }: { report: ProfileReport }) {
   }
 
   const formatSelf = (value: number) =>
-    report.type === 'cpu' ? `${value.toLocaleString()} ms` : formatBytes(value)
+    report.type === 'cpu' ? formatMs(value / 1000) : formatBytes(value)
 
   const num = 'text-right tabular-nums whitespace-nowrap'
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-base-content/60">
-        {report.type === 'cpu' ? 'CPU profile' : 'Allocation profile'} ·{' '}
+        {report.type === 'cpu' ? 'CPU profile' : 'Memory profile'} ·{' '}
         {formatDateTime(report.capturedAt)} · {Math.round(report.durationMs / 1000)}s
         {report.type === 'cpu'
           ? ` · sampled every ${report.samplingIntervalUs} µs`
@@ -77,7 +77,7 @@ export function ReportView({ report }: { report: ProfileReport }) {
             <tr>
               <th scope="col">Bucket</th>
               <th scope="col" className={num}>
-                {report.type === 'cpu' ? 'Self time' : 'Self alloc'}
+                {report.type === 'cpu' ? 'Self time' : 'Self memory'}
               </th>
               <th scope="col" className={num}>
                 %

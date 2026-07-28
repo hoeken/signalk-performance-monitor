@@ -6,6 +6,7 @@ import type {
   ProfileType,
 } from '../../src/shared/types'
 import { ApiError, deleteProfile, getMetrics, getProfiles, getReport, startProfile } from './api'
+import { formatDateTime } from './format'
 import { MetricsTiles } from './components/MetricsTiles'
 import { ProfileControls } from './components/ProfileControls'
 import { ProfileList } from './components/ProfileList'
@@ -101,7 +102,9 @@ export function App() {
         <header className="flex flex-wrap items-baseline justify-between gap-3">
           <h1 className="text-xl font-semibold">Performance Monitor</h1>
           {metrics ? (
-            <span className="text-xs text-base-content/60">updated {metrics.timestamp}</span>
+            <span className="text-xs text-base-content/60">
+              updated {formatDateTime(metrics.timestamp)}
+            </span>
           ) : null}
         </header>
 

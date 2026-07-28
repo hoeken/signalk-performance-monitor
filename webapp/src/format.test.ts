@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { formatBytes, formatDuration, formatMs, formatPercent } from './format'
 
 describe('formatMs', () => {
-  it('renders seconds-valued delays as milliseconds', () => {
+  it('renders seconds-valued delays as milliseconds with fixed precision', () => {
     expect(formatMs(0.0123)).toBe('12.3 ms')
-    expect(formatMs(0.2)).toBe('200 ms')
-    expect(formatMs(1.5)).toBe('1.50 s')
+    expect(formatMs(0.2)).toBe('200.0 ms')
+    expect(formatMs(1.5)).toBe('1,500.0 ms')
     expect(formatMs(0)).toBe('0.0 ms')
   })
 })
@@ -23,7 +23,7 @@ describe('formatBytes', () => {
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(2048)).toBe('2.0 kB')
     expect(formatBytes(88_300_544)).toBe('84.2 MB')
-    expect(formatBytes(2_147_483_648)).toBe('2.00 GB')
+    expect(formatBytes(2_147_483_648)).toBe('2.0 GB')
   })
 })
 

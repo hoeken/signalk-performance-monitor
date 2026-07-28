@@ -53,7 +53,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('12.3 ms')).toBeInTheDocument()
-    expect(await screen.findByText('Allocation')).toBeInTheDocument()
+    expect(await screen.findByText('Memory')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Report' })).toHaveLength(2)
   })
 
