@@ -478,6 +478,7 @@ export function buildFilesReport(
     durationMs: meta.durationMs,
     sampleIntervalSeconds: meta.sampleIntervalSeconds,
     sampleCount: raw.samples.length,
+    ...(bucketOptions.dataRoot ? { dataRoot: bucketOptions.dataRoot } : {}),
     totals: {
       writeBytes,
       readBytes,

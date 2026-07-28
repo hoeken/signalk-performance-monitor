@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import type { FileActivityFile, FilesReport } from '../../../src/shared/types'
 import { DataTable, downloadJson, NUMERIC, type ExportRef } from './DataTable'
@@ -10,49 +10,102 @@ function PathCell({ path }: { path: string }) {
   return <code className="text-xs break-all">{path}</code>
 }
 
-/** Truncating path cell for the sortable table (full path in the tooltip). */
-function FilePathCell({ path }: { path: string }) {
+/** Copies the full file path; shows a checkmark briefly after copying. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
   return (
-    <span className="block max-w-md truncate font-mono text-xs" title={path}>
-      {path}
+    <button
+      type="button"
+      className="btn btn-ghost btn-xs shrink-0 px-1"
+      aria-label="Copy file path"
+      title={copied ? 'Copied' : 'Copy full path'}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-3.5 w-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+        aria-hidden="true"
+      >
+        {copied ? (
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        ) : (
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 4h8a2 2 0 012 2v8a2 2 0 01-2 2h-8a2 2 0 01-2-2v-8a2 2 0 012-2z"
+          />
+        )}
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * Truncating path cell for the sortable table: a copy button holding the
+ * full path, then the path with the config root trimmed (full path in the
+ * tooltip).
+ */
+function FilePathCell({ path, display }: { path: string; display: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <CopyButton text={path} />
+      <span className="block max-w-xs truncate font-mono text-xs" title={path}>
+        {display}
+      </span>
     </span>
   )
 }
 
-const fileColumns: ColumnDef<FileActivityFile>[] = [
-  {
-    accessorKey: 'path',
-    header: 'File',
-    cell: ({ row }) => <FilePathCell path={row.original.path} />,
-  },
-  { accessorKey: 'bucket', header: 'Bucket' },
-  { accessorKey: 'mode', header: 'Mode' },
-  { accessorKey: 'kind', header: 'Kind' },
-  {
-    accessorKey: 'sizeBytes',
-    header: 'Size',
-    meta: NUMERIC,
-    cell: ({ row }) => formatBytes(row.original.sizeBytes),
-  },
-  {
-    accessorKey: 'growthBytes',
-    header: 'Growth',
-    meta: NUMERIC,
-    cell: ({ row }) => (row.original.growthBytes > 0 ? formatBytes(row.original.growthBytes) : '—'),
-  },
-  {
-    accessorKey: 'mtimeChanges',
-    header: 'Changes',
-    meta: NUMERIC,
-    cell: ({ row }) => (row.original.mtimeChanges > 0 ? row.original.mtimeChanges : '—'),
-  },
-  {
-    accessorKey: 'inPlaceRewrites',
-    header: 'In-place',
-    meta: NUMERIC,
-    cell: ({ row }) => (row.original.inPlaceRewrites > 0 ? row.original.inPlaceRewrites : '—'),
-  },
-]
+function makeFileColumns(dataRoot: string | undefined): ColumnDef<FileActivityFile>[] {
+  const display = (filePath: string) =>
+    dataRoot && filePath.startsWith(`${dataRoot}/`) ? filePath.slice(dataRoot.length + 1) : filePath
+  return [
+    {
+      accessorKey: 'path',
+      header: 'File',
+      cell: ({ row }) => (
+        <FilePathCell path={row.original.path} display={display(row.original.path)} />
+      ),
+    },
+    { accessorKey: 'bucket', header: 'Bucket' },
+    { accessorKey: 'mode', header: 'Mode' },
+    { accessorKey: 'kind', header: 'Kind' },
+    {
+      accessorKey: 'sizeBytes',
+      header: 'Size',
+      meta: NUMERIC,
+      cell: ({ row }) => formatBytes(row.original.sizeBytes),
+    },
+    {
+      accessorKey: 'growthBytes',
+      header: 'Growth',
+      meta: NUMERIC,
+      cell: ({ row }) =>
+        row.original.growthBytes > 0 ? formatBytes(row.original.growthBytes) : '—',
+    },
+    {
+      accessorKey: 'mtimeChanges',
+      header: 'Changes',
+      meta: NUMERIC,
+      cell: ({ row }) => (row.original.mtimeChanges > 0 ? row.original.mtimeChanges : '—'),
+    },
+    {
+      accessorKey: 'inPlaceRewrites',
+      header: 'In-place',
+      meta: NUMERIC,
+      cell: ({ row }) => (row.original.inPlaceRewrites > 0 ? row.original.inPlaceRewrites : '—'),
+    },
+  ]
+}
 
 function Summary({ report }: { report: FilesReport }) {
   const activeFiles = report.files.filter(
@@ -249,10 +302,17 @@ type TabId = (typeof TABS)[number]['id']
 export function FilesReportView({ report }: { report: FilesReport }) {
   const [tab, setTab] = useState<TabId>('summary')
   const [search, setSearch] = useState('')
+  const [hideReadonly, setHideReadonly] = useState(true)
   const exportRef: ExportRef = useRef(null)
 
+  const columns = useMemo(() => makeFileColumns(report.dataRoot), [report.dataRoot])
+  const visibleFiles = useMemo(
+    () => (hideReadonly ? report.files.filter((file) => file.mode !== 'read') : report.files),
+    [report.files, hideReadonly],
+  )
+
   // Summary downloads the whole report; Individual Files downloads the
-  // current view (sorted and searched, all pages).
+  // current view (sorted, searched, readonly-filtered — all pages).
   const handleDownload = () => {
     if (tab === 'summary') {
       downloadJson(report, `${report.id}.report.json`)
@@ -294,14 +354,25 @@ export function FilesReportView({ report }: { report: FilesReport }) {
           </button>
         </div>
         {tab === 'files' ? (
-          <input
-            type="search"
-            className="input input-sm w-48"
-            placeholder="Search…"
-            aria-label="Search files"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                checked={hideReadonly}
+                onChange={(event) => setHideReadonly(event.target.checked)}
+              />
+              Hide readonly files
+            </label>
+            <input
+              type="search"
+              className="input input-sm w-48"
+              placeholder="Search…"
+              aria-label="Search files"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
         ) : null}
       </div>
 
@@ -310,15 +381,17 @@ export function FilesReportView({ report }: { report: FilesReport }) {
       ) : (
         <>
           <DataTable
-            data={report.files}
-            columns={fileColumns}
+            data={visibleFiles}
+            columns={columns}
             initialSorting={[{ id: 'growthBytes', desc: true }]}
             globalFilter={search}
-            emptyMessage="No open files were seen during the capture."
+            emptyMessage="No open files match the current filters."
             exportRef={exportRef}
           />
           <p className="text-xs text-base-content/60">
-            Every regular file the server had open during the capture, including unchanged ones.
+            Every regular file the server had open during the capture, including unchanged ones —
+            untick &quot;Hide readonly files&quot; to include files only open for reading. Paths are
+            shown relative to the Signal K data directory; the copy button copies the full path.
             Growth sums size increases across samples; Changes counts samples where the mtime
             advanced; In-place counts mtime changes with no size change. Click a column header to
             sort.

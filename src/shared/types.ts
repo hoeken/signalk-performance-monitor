@@ -230,6 +230,8 @@ export interface FilesReport {
   durationMs: number
   sampleIntervalSeconds: number
   sampleCount: number
+  /** Signal K config root the paths were attributed against; the webapp trims it from displayed paths. */
+  dataRoot?: string
   /** process-wide storage I/O over the capture window, from /proc/self/io */
   totals: {
     writeBytes: number

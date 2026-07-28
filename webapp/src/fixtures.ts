@@ -222,6 +222,7 @@ export const filesReportFixture: FilesReport = {
   durationMs: 30000,
   sampleIntervalSeconds: 1,
   sampleCount: 31,
+  dataRoot: '/data/.signalk',
   totals: {
     writeBytes: 1_572_864,
     readBytes: 0,

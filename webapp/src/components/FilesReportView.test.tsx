@@ -53,16 +53,20 @@ describe('FilesReportView', () => {
     expect(screen.queryByText(/settings\.json/)).not.toBeInTheDocument()
   })
 
-  it('lists every watched file with its stats on the Individual Files tab', async () => {
+  it('lists watched files with data-root-relative paths, hiding readonly ones by default', async () => {
     const user = userEvent.setup()
     render(<FilesReportView report={filesReportFixture} />)
 
     await user.click(screen.getByRole('tab', { name: 'Individual Files' }))
 
-    const rows = fileRows()
-    expect(rows).toHaveLength(filesReportFixture.files.length)
-    // Sorted by growth descending: the append writer leads, idle files show too.
-    expect(rows[0]![0]).toContain('courseInfo.json')
+    // settings.json is only open for reading, so it starts hidden.
+    let rows = fileRows()
+    expect(rows).toHaveLength(3)
+    expect(rows.some((row) => row[0]!.includes('settings.json'))).toBe(false)
+
+    // Sorted by growth descending: the append writer leads. The data root
+    // is trimmed from the displayed path.
+    expect(rows[0]![0]).toBe('serverstate/course/courseInfo.json')
     expect(rows[0]!.slice(1)).toEqual([
       'signalk-server (core)',
       'write',
@@ -72,7 +76,9 @@ describe('FilesReportView', () => {
       '30',
       '—',
     ])
-    const wal = rows.find((row) => row[0]!.includes('maintenance.db-wal'))
+    const wal = rows.find((row) =>
+      row[0]!.includes('plugin-config-data/maintenance-tracker/maintenance.db-wal'),
+    )
     expect(wal!.slice(1)).toEqual([
       'maintenance-tracker',
       'read-write',
@@ -82,7 +88,26 @@ describe('FilesReportView', () => {
       '30',
       '30',
     ])
+
+    // Unticking the filter reveals the readonly file.
+    await user.click(screen.getByRole('checkbox', { name: 'Hide readonly files' }))
+    rows = fileRows()
+    expect(rows).toHaveLength(filesReportFixture.files.length)
     expect(rows.some((row) => row[0]!.includes('settings.json'))).toBe(true)
+  })
+
+  it('copies the full path from the copy button', async () => {
+    const user = userEvent.setup()
+    render(<FilesReportView report={filesReportFixture} />)
+    await user.click(screen.getByRole('tab', { name: 'Individual Files' }))
+
+    const copyButtons = screen.getAllByRole('button', { name: 'Copy file path' })
+    await user.click(copyButtons[0]!)
+
+    // The first row displays the trimmed path but copies the absolute one.
+    expect(await window.navigator.clipboard.readText()).toBe(
+      '/data/.signalk/serverstate/course/courseInfo.json',
+    )
   })
 
   it('searches the files table', async () => {
@@ -109,8 +134,10 @@ describe('FilesReportView', () => {
     ) as unknown
     expect(report).toEqual(filesReportFixture)
 
-    // Individual Files tab: the sorted+searched rows.
+    // Individual Files tab: the filtered+searched rows. settings.json is
+    // readonly, so the filter has to come off before it can be exported.
     await user.click(screen.getByRole('tab', { name: 'Individual Files' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Hide readonly files' }))
     await user.type(screen.getByRole('searchbox', { name: 'Search files' }), 'settings')
     await user.click(screen.getByRole('button', { name: 'Download' }))
     expect(download.lastName()).toBe(`${filesReportFixture.id}.files.json`)
