@@ -1,14 +1,22 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import type { FileActivityFile, FilesReport } from '../../../src/shared/types'
-import { DataTable, downloadJson, NUMERIC, type ExportRef } from './DataTable'
+import { copyText } from '../clipboard'
+import { DataTable, downloadJson, EXPAND, NUMERIC, type ExportRef } from './DataTable'
 import { formatBytes, formatBytesRate, formatDateTime } from '../format'
 
 const num = 'text-right tabular-nums whitespace-nowrap'
 
-function PathCell({ path }: { path: string }) {
-  return <code className="text-xs break-all">{path}</code>
-}
+/**
+ * The path column that soaks up the remaining table width — same
+ * auto-layout trick as DataTable's EXPAND meta, so the cell contents can
+ * truncate instead of stretching the column.
+ */
+const expand = 'w-full max-w-0'
+
+/** Trims the Signal K config root from a path for display. */
+const trimRoot = (path: string, dataRoot: string | undefined) =>
+  dataRoot && path.startsWith(`${dataRoot}/`) ? path.slice(dataRoot.length + 1) : path
 
 /** Copies the full file path; shows a checkmark briefly after copying. */
 function CopyButton({ text }: { text: string }) {
@@ -16,16 +24,20 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="btn btn-ghost btn-xs shrink-0 px-1"
+      // Deliberately not a daisyUI .btn: its minimum height overflows the
+      // compact table row and clips the icon.
+      className="inline-flex shrink-0 cursor-pointer items-center text-base-content/50 hover:text-base-content"
       aria-label="Copy file path"
       title={copied ? 'Copied' : 'Copy full path'}
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
+        void copyText(text).then((ok) => {
+          if (!ok) return
           setCopied(true)
           setTimeout(() => setCopied(false), 1500)
         })
       }}
     >
+      {/* Shapes stay ≥1 unit inside the viewBox so the 2-unit stroke never clips. */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className="h-3.5 w-3.5"
@@ -33,52 +45,114 @@ function CopyButton({ text }: { text: string }) {
         viewBox="0 0 24 24"
         stroke="currentColor"
         strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
         aria-hidden="true"
       >
         {copied ? (
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          <path d="M20 6L9 17l-5-5" />
         ) : (
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 4h8a2 2 0 012 2v8a2 2 0 01-2 2h-8a2 2 0 01-2-2v-8a2 2 0 012-2z"
-          />
+          <>
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+          </>
         )}
       </svg>
     </button>
   )
 }
 
+/** The raw mode is 'read'; the UI spells it out. */
+const modeLabel = (mode: string) => (mode === 'read' ? 'read-only' : mode)
+
 /**
- * Truncating path cell for the sortable table: a copy button holding the
- * full path, then the path with the config root trimmed (full path in the
- * tooltip).
+ * Write-capable modes get their own color to stand apart from passive
+ * ones — differentiation, not alarm (hence accent, not warning).
  */
-function FilePathCell({ path, display }: { path: string; display: string }) {
+const MODE_BADGE: Record<string, string> = {
+  append: 'badge-accent badge-soft',
+  write: 'badge-accent badge-soft',
+  'read-write': 'badge-accent badge-soft',
+  read: 'badge-ghost',
+  watched: 'badge-ghost',
+}
+
+/**
+ * Path presentation shared by every file table: a copy button holding the
+ * full path, the path with the config root trimmed (full path in the
+ * tooltip), and colored badges underneath. Extra children (e.g. database
+ * notes) render below the badge row.
+ */
+function PathCell({
+  path,
+  dataRoot,
+  badges,
+  children,
+}: {
+  path: string
+  dataRoot: string | undefined
+  badges: ReactNode
+  children?: ReactNode
+}) {
   return (
-    <span className="flex items-center gap-1">
+    <div className="flex items-start gap-1.5">
       <CopyButton text={path} />
-      <span className="block max-w-xs truncate font-mono text-xs" title={path}>
-        {display}
-      </span>
-    </span>
+      <div className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-xs" title={path}>
+          {trimRoot(path, dataRoot)}
+        </span>
+        <div className="mt-0.5 flex flex-wrap gap-1">{badges}</div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function BucketBadge({ bucket }: { bucket: string }) {
+  return <span className="badge badge-xs badge-primary badge-soft">{bucket}</span>
+}
+
+/** Bucket / mode / kind badges under the path — a watched file's full story. */
+function FileCell({ file, dataRoot }: { file: FileActivityFile; dataRoot: string | undefined }) {
+  return (
+    <PathCell
+      path={file.path}
+      dataRoot={dataRoot}
+      badges={
+        <>
+          <BucketBadge bucket={file.bucket} />
+          <span className={`badge badge-xs ${MODE_BADGE[file.mode] ?? 'badge-ghost'}`}>
+            {modeLabel(file.mode)}
+          </span>
+          {file.kind !== 'file' ? (
+            // 'sqlite-wal' / 'sqlite-db' / 'sqlite-shm' → just 'sqlite'; the
+            // filename already shows which family member it is. Violet from
+            // the theme tokens — no daisyUI semantic slot is purple here.
+            <span
+              className="badge badge-xs border-transparent"
+              style={{ backgroundColor: 'var(--badge-sqlite-bg)', color: 'var(--badge-sqlite)' }}
+            >
+              {file.kind.split('-')[0]}
+            </span>
+          ) : null}
+        </>
+      }
+    />
   )
 }
 
 function makeFileColumns(dataRoot: string | undefined): ColumnDef<FileActivityFile>[] {
-  const display = (filePath: string) =>
-    dataRoot && filePath.startsWith(`${dataRoot}/`) ? filePath.slice(dataRoot.length + 1) : filePath
   return [
     {
-      accessorKey: 'path',
+      id: 'path',
+      // Badges live inside the File cell, so fold their values (as
+      // displayed) into the accessor: search matches them, and sorting
+      // stays path-first.
+      accessorFn: (row) => `${row.path} ${row.bucket} ${modeLabel(row.mode)} ${row.kind}`,
       header: 'File',
-      cell: ({ row }) => (
-        <FilePathCell path={row.original.path} display={display(row.original.path)} />
-      ),
+      meta: EXPAND,
+      cell: ({ row }) => <FileCell file={row.original} dataRoot={dataRoot} />,
     },
-    { accessorKey: 'bucket', header: 'Bucket' },
-    { accessorKey: 'mode', header: 'Mode' },
-    { accessorKey: 'kind', header: 'Kind' },
     {
       accessorKey: 'sizeBytes',
       header: 'Size',
@@ -179,8 +253,9 @@ function Summary({ report }: { report: FilesReport }) {
             <table className="table table-sm">
               <thead>
                 <tr>
-                  <th scope="col">Database</th>
-                  <th scope="col">Bucket</th>
+                  <th scope="col" className={expand}>
+                    Database
+                  </th>
                   <th scope="col" className={num}>
                     Commits/s
                   </th>
@@ -198,15 +273,25 @@ function Summary({ report }: { report: FilesReport }) {
               <tbody>
                 {report.databases.map((db) => (
                   <tr key={db.path}>
-                    <td>
-                      <PathCell path={db.path} />
-                      {db.notes.map((note) => (
-                        <span key={note} className="block text-xs text-warning">
-                          {note}
-                        </span>
-                      ))}
+                    <td className={expand}>
+                      <PathCell
+                        path={db.path}
+                        dataRoot={report.dataRoot}
+                        badges={<BucketBadge bucket={db.bucket} />}
+                      >
+                        {db.notes.map((note) => (
+                          // Compact paddings: the stock alert is sized for
+                          // page-level banners, not a table cell.
+                          <div
+                            key={note}
+                            role="alert"
+                            className="alert alert-warning alert-soft mt-1.5 px-2 py-1 text-xs"
+                          >
+                            {note}
+                          </div>
+                        ))}
+                      </PathCell>
                     </td>
-                    <td className="whitespace-nowrap">{db.bucket}</td>
                     <td className={num}>{db.commitsPerSecond.toFixed(2)}</td>
                     <td className={num}>{db.framesWritten.toLocaleString()}</td>
                     <td className={num}>{db.checkpoints}</td>
@@ -235,9 +320,9 @@ function Summary({ report }: { report: FilesReport }) {
               <table className="table table-sm">
                 <thead>
                   <tr>
-                    <th scope="col">File</th>
-                    <th scope="col">Bucket</th>
-                    <th scope="col">Mode</th>
+                    <th scope="col" className={expand}>
+                      File
+                    </th>
                     <th scope="col" className={num}>
                       Size
                     </th>
@@ -255,13 +340,8 @@ function Summary({ report }: { report: FilesReport }) {
                 <tbody>
                   {activeFiles.map((file) => (
                     <tr key={file.path}>
-                      <td>
-                        <PathCell path={file.path} />
-                      </td>
-                      <td className="whitespace-nowrap">{file.bucket}</td>
-                      <td className="whitespace-nowrap">
-                        {file.mode}
-                        {file.kind !== 'file' ? ` · ${file.kind}` : ''}
+                      <td className={expand}>
+                        <FileCell file={file} dataRoot={report.dataRoot} />
                       </td>
                       <td className={num}>{formatBytes(file.sizeBytes)}</td>
                       <td className={num}>{formatBytes(file.growthBytes)}</td>

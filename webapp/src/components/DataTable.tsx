@@ -37,10 +37,19 @@ function pageItems(current: number, count: number): (number | 'gap')[] {
 /** Marks a column as right-aligned numeric via TanStack's free-form `meta`. */
 export const NUMERIC = { numeric: true }
 
+/**
+ * Marks the column that soaks up all remaining table width. The `max-w-0`
+ * is the standard auto-layout trick that lets cell contents truncate
+ * instead of stretching the column — contents must bring their own
+ * `truncate`/`min-w-0`.
+ */
+export const EXPAND = { expand: true }
+
 export function cellClass(meta: unknown): string | undefined {
-  return (meta as typeof NUMERIC | undefined)?.numeric
-    ? 'text-right tabular-nums whitespace-nowrap'
-    : undefined
+  const flags = meta as { numeric?: boolean; expand?: boolean } | undefined
+  if (flags?.numeric) return 'text-right tabular-nums whitespace-nowrap'
+  if (flags?.expand) return 'w-full max-w-0'
+  return undefined
 }
 
 /** Lets the parent's Download button read the current view without owning the table. */

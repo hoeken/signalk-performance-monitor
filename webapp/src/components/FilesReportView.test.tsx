@@ -53,6 +53,37 @@ describe('FilesReportView', () => {
     expect(screen.queryByText(/settings\.json/)).not.toBeInTheDocument()
   })
 
+  it('styles Summary paths like the files table: trimmed, badged, with a copy button', async () => {
+    const user = userEvent.setup()
+    render(<FilesReportView report={filesReportFixture} />)
+
+    // Summary renders three tables: attribution, databases, open files.
+    const [, dbTable, openTable] = screen.getAllByRole('table')
+
+    // Databases: root-trimmed path, bucket as a badge underneath, note kept.
+    const dbCell = within(dbTable!).getAllByRole('cell')[0]!
+    expect(dbCell).toHaveTextContent('plugin-config-data/maintenance-tracker/maintenance.db')
+    expect(dbCell).not.toHaveTextContent('/data/.signalk')
+    expect(within(dbCell).getByText('maintenance-tracker')).toHaveClass('badge')
+    expect(within(dbCell).getByRole('alert')).toHaveTextContent(/sustained commits/)
+    expect(within(dbCell).getByRole('alert')).toHaveClass('alert-warning', 'alert-soft')
+
+    // Open files: bucket / mode / kind fold into badges inside the File cell.
+    const walRow = within(openTable!)
+      .getAllByRole('row')
+      .find((row) => row.textContent!.includes('maintenance.db-wal'))!
+    const fileCell = within(walRow).getAllByRole('cell')[0]!
+    expect(within(fileCell).getByText('maintenance-tracker')).toHaveClass('badge')
+    expect(within(fileCell).getByText('read-write')).toHaveClass('badge')
+    expect(within(fileCell).getByText('sqlite')).toHaveClass('badge')
+
+    // The display is trimmed but the copy button holds the absolute path.
+    await user.click(within(dbCell).getByRole('button', { name: 'Copy file path' }))
+    expect(await window.navigator.clipboard.readText()).toBe(
+      '/data/.signalk/plugin-config-data/maintenance-tracker/maintenance.db',
+    )
+  })
+
   it('lists watched files with data-root-relative paths, hiding readonly ones by default', async () => {
     const user = userEvent.setup()
     render(<FilesReportView report={filesReportFixture} />)
@@ -65,29 +96,22 @@ describe('FilesReportView', () => {
     expect(rows.some((row) => row[0]!.includes('settings.json'))).toBe(false)
 
     // Sorted by growth descending: the append writer leads. The data root
-    // is trimmed from the displayed path.
-    expect(rows[0]![0]).toBe('serverstate/course/courseInfo.json')
-    expect(rows[0]!.slice(1)).toEqual([
-      'signalk-server (core)',
-      'write',
-      'file',
-      '812 B',
-      '23.8 kB',
-      '30',
-      '—',
-    ])
+    // is trimmed from the displayed path; bucket/mode/kind render as badges
+    // inside the File cell.
+    expect(rows[0]![0]).toContain('serverstate/course/courseInfo.json')
+    expect(rows[0]![0]).toContain('signalk-server (core)')
+    expect(rows[0]![0]).toContain('write')
+    expect(rows[0]![0]).not.toContain('sqlite') // no kind badge for plain files
+    expect(rows[0]!.slice(1)).toEqual(['812 B', '23.8 kB', '30', '—'])
     const wal = rows.find((row) =>
       row[0]!.includes('plugin-config-data/maintenance-tracker/maintenance.db-wal'),
     )
-    expect(wal!.slice(1)).toEqual([
-      'maintenance-tracker',
-      'read-write',
-      'sqlite-wal',
-      '4.0 MB',
-      '—',
-      '30',
-      '30',
-    ])
+    expect(wal![0]).toContain('maintenance-tracker')
+    expect(wal![0]).toContain('read-write')
+    // The kind badge drops the family suffix — the filename already shows it.
+    expect(wal![0]).toContain('sqlite')
+    expect(wal![0]).not.toContain('sqlite-wal')
+    expect(wal!.slice(1)).toEqual(['4.0 MB', '—', '30', '30'])
 
     // Unticking the filter reveals the readonly file.
     await user.click(screen.getByRole('checkbox', { name: 'Hide readonly files' }))
