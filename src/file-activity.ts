@@ -193,29 +193,11 @@ type FileKind = FileActivityFile['kind']
 
 interface WatchedFile {
   path: string
-  kind: FileKind
   /** seen among the process's open fds (vs discovered as a SQLite sibling) */
   seenOpen: boolean
   readable: boolean
   writable: boolean
   append: boolean
-  lastSize: number | null
-  lastMtimeMs: number | null
-  growthBytes: number
-  mtimeChanges: number
-  inPlaceRewrites: number
-}
-
-interface WatchedDb {
-  /** main database path */
-  path: string
-  shmPath: string
-  pageSize: number
-  commits: number
-  framesWritten: number
-  checkpoints: number
-  checkpointedFrames: number
-  last: WalIndexHeader | null
 }
 
 interface FileSampleRecord {
@@ -232,6 +214,34 @@ export interface FileActivitySample {
   walIndexes: Record<string, WalIndexHeader>
 }
 
+/**
+ * The downloadable raw capture: the full sample series plus the merged
+ * open mode observed per path (which only exists while the fds are live).
+ * Everything in the report is reconstructible from this, which is what
+ * makes download → upload lossless.
+ */
+export interface FilesRawCapture {
+  samples: FileActivitySample[]
+  modes?: Record<string, string>
+}
+
+/** Shape check for uploads: a raw file activity capture we saved. */
+export function isFilesRawCapture(raw: unknown): raw is FilesRawCapture {
+  const capture = raw as Partial<FilesRawCapture> | null
+  if (typeof capture !== 'object' || capture === null) return false
+  if (!Array.isArray(capture.samples) || capture.samples.length === 0) return false
+  return capture.samples.every(
+    (sample) =>
+      typeof sample === 'object' &&
+      sample !== null &&
+      typeof (sample as FileActivitySample).offsetMs === 'number' &&
+      typeof (sample as FileActivitySample).files === 'object' &&
+      (sample as FileActivitySample).files !== null &&
+      typeof (sample as FileActivitySample).walIndexes === 'object' &&
+      (sample as FileActivitySample).walIndexes !== null,
+  )
+}
+
 export interface FileActivityCaptureOptions {
   procSelfDir?: string
   bucketOptions?: DataPathBucketOptions
@@ -244,6 +254,27 @@ export interface FilesReportMeta {
   sampleIntervalSeconds: number
 }
 
+/**
+ * Capture metadata recovered from the samples themselves, for imports of
+ * files that lost their embedded metadata.
+ */
+export function inferFilesCaptureMeta(raw: FilesRawCapture): {
+  durationMs: number
+  sampleIntervalSeconds: number
+} {
+  const offsets = raw.samples.map((sample) => sample.offsetMs)
+  const gaps = offsets
+    .slice(1)
+    .map((offset, i) => offset - (offsets[i] ?? 0))
+    .filter((gap) => gap > 0)
+    .sort((a, b) => a - b)
+  const median = gaps[Math.floor(gaps.length / 2)]
+  return {
+    durationMs: Math.max(offsets[offsets.length - 1] ?? 0, 0),
+    sampleIntervalSeconds: median ? Math.round(median) / 1000 : 1,
+  }
+}
+
 const uint32Delta = (current: number, previous: number) => (current - previous) >>> 0
 
 function sqliteKindOf(filePath: string): { kind: FileKind; dbPath: string } {
@@ -252,19 +283,225 @@ function sqliteKindOf(filePath: string): { kind: FileKind; dbPath: string } {
   return { kind: 'file', dbPath: filePath }
 }
 
+interface FileAggregate {
+  lastSize: number | null
+  lastMtimeMs: number | null
+  growthBytes: number
+  mtimeChanges: number
+  inPlaceRewrites: number
+}
+
+interface DbAggregate {
+  pageSize: number
+  commits: number
+  framesWritten: number
+  checkpoints: number
+  checkpointedFrames: number
+  last: WalIndexHeader | null
+}
+
+/**
+ * Build the aggregated report by replaying the raw sample series — the one
+ * code path shared by live captures and re-uploaded downloads, so both
+ * produce identical reports.
+ */
+export function buildFilesReport(
+  raw: FilesRawCapture,
+  meta: FilesReportMeta,
+  bucketOptions: DataPathBucketOptions = {},
+): FilesReport {
+  const modes = raw.modes ?? {}
+  const durationSeconds = Math.max(meta.durationMs / 1000, 1e-3)
+  const perSecond = (value: number) => Math.round((value / durationSeconds) * 10) / 10
+
+  let firstIo: ProcIoCounters | null = null
+  let lastIo: ProcIoCounters | null = null
+  const fileAggs = new Map<string, FileAggregate>()
+  const dbAggs = new Map<string, DbAggregate>()
+
+  for (const sample of raw.samples) {
+    if (sample.io) {
+      firstIo ??= sample.io
+      lastIo = sample.io
+    }
+
+    for (const [filePath, record] of Object.entries(sample.files)) {
+      let agg = fileAggs.get(filePath)
+      if (!agg) {
+        agg = {
+          lastSize: null,
+          lastMtimeMs: null,
+          growthBytes: 0,
+          mtimeChanges: 0,
+          inPlaceRewrites: 0,
+        }
+        fileAggs.set(filePath, agg)
+      }
+      const { size, mtimeMs } = record
+      if (size !== null && agg.lastSize !== null) {
+        agg.growthBytes += Math.max(size - agg.lastSize, 0)
+      }
+      if (mtimeMs !== null && agg.lastMtimeMs !== null && mtimeMs > agg.lastMtimeMs) {
+        agg.mtimeChanges += 1
+        if (size !== null && size === agg.lastSize) agg.inPlaceRewrites += 1
+      }
+      if (size !== null) agg.lastSize = size
+      if (mtimeMs !== null) agg.lastMtimeMs = mtimeMs
+    }
+
+    for (const [dbPath, header] of Object.entries(sample.walIndexes)) {
+      let db = dbAggs.get(dbPath)
+      if (!db) {
+        db = {
+          pageSize: 0,
+          commits: 0,
+          framesWritten: 0,
+          checkpoints: 0,
+          checkpointedFrames: 0,
+          last: null,
+        }
+        dbAggs.set(dbPath, db)
+      }
+      if (db.last) {
+        db.commits += uint32Delta(header.iChange, db.last.iChange)
+        if (header.mxFrame >= db.last.mxFrame) {
+          db.framesWritten += header.mxFrame - db.last.mxFrame
+        } else {
+          // The frame counter reset: a checkpoint copied the WAL into the
+          // main database and the WAL restarted from the beginning.
+          db.checkpoints += 1
+          db.checkpointedFrames += db.last.mxFrame
+          db.framesWritten += header.mxFrame
+        }
+      }
+      db.pageSize = header.pageSize
+      db.last = header
+    }
+  }
+
+  // A database registers when its -shm sibling was watched, even if the
+  // header never parsed (matching the live capture's zero-count rows).
+  const dbPaths = new Set<string>(dbAggs.keys())
+  for (const filePath of fileAggs.keys()) {
+    if (filePath.endsWith('-shm')) dbPaths.add(filePath.slice(0, -4))
+  }
+  const kindOf = (filePath: string): FileKind => {
+    const { kind } = sqliteKindOf(filePath)
+    if (kind !== 'file') return kind
+    return dbPaths.has(filePath) ? 'sqlite-db' : 'file'
+  }
+
+  const writeBytes = firstIo && lastIo ? Math.max(lastIo.writeBytes - firstIo.writeBytes, 0) : 0
+  const readBytes = firstIo && lastIo ? Math.max(lastIo.readBytes - firstIo.readBytes, 0) : 0
+
+  const files: FileActivityFile[] = [...fileAggs.entries()]
+    .map(([filePath, agg]) => ({
+      path: filePath,
+      bucket: bucketForDataPath(filePath, bucketOptions),
+      mode: modes[filePath] ?? 'watched',
+      kind: kindOf(filePath),
+      sizeBytes: agg.lastSize ?? 0,
+      growthBytes: agg.growthBytes,
+      mtimeChanges: agg.mtimeChanges,
+      inPlaceRewrites: agg.inPlaceRewrites,
+    }))
+    .sort((a, b) => b.growthBytes - a.growthBytes || a.path.localeCompare(b.path))
+
+  const databases: SqliteActivity[] = [...dbPaths]
+    .map((dbPath) => {
+      const db = dbAggs.get(dbPath) ?? {
+        pageSize: 0,
+        commits: 0,
+        framesWritten: 0,
+        checkpoints: 0,
+        checkpointedFrames: 0,
+        last: null,
+      }
+      const commitsPerSecond = Math.round((db.commits / durationSeconds) * 100) / 100
+      const estimatedWriteBytes =
+        db.framesWritten * (db.pageSize + WAL_FRAME_HEADER_BYTES) +
+        db.checkpointedFrames * db.pageSize
+      const notes: string[] = []
+      if (commitsPerSecond >= HIGH_COMMIT_RATE_PER_SECOND) {
+        notes.push(
+          `${commitsPerSecond}/s sustained commits — each one costs an fsync; consider batching writes`,
+        )
+      }
+      return {
+        path: dbPath,
+        bucket: bucketForDataPath(dbPath, bucketOptions),
+        pageSize: db.pageSize,
+        commits: db.commits,
+        commitsPerSecond,
+        framesWritten: db.framesWritten,
+        checkpoints: db.checkpoints,
+        estimatedWriteBytes,
+        notes,
+      }
+    })
+    .sort((a, b) => b.estimatedWriteBytes - a.estimatedWriteBytes)
+
+  // Attribute estimated writes per bucket: WAL math covers the SQLite
+  // family (db + wal + shm), size growth covers plain files. Whatever the
+  // process-wide counter saw beyond that is reported, not hidden.
+  const byBucket = new Map<string, number>()
+  const add = (bucket: string, bytes: number) => {
+    if (bytes > 0) byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + bytes)
+  }
+  for (const db of databases) add(db.bucket, db.estimatedWriteBytes)
+  for (const file of files) {
+    if (file.kind === 'file') add(file.bucket, file.growthBytes)
+  }
+  const attributed = [...byBucket.values()].reduce((sum, bytes) => sum + bytes, 0)
+  const percentOf = (bytes: number) =>
+    writeBytes > 0 ? Math.round((10000 * bytes) / writeBytes) / 100 : 0
+  const attribution: FilesAttributionRow[] = [...byBucket.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, bytes]) => ({
+      name,
+      estimatedWriteBytes: bytes,
+      percent: percentOf(bytes),
+    }))
+  const unattributed = Math.max(writeBytes - attributed, 0)
+  if (unattributed > 0 || attribution.length === 0) {
+    attribution.push({
+      name: UNATTRIBUTED_BUCKET,
+      estimatedWriteBytes: unattributed,
+      percent: percentOf(unattributed),
+    })
+  }
+
+  return {
+    id: meta.id,
+    type: 'files',
+    capturedAt: meta.capturedAt,
+    durationMs: meta.durationMs,
+    sampleIntervalSeconds: meta.sampleIntervalSeconds,
+    sampleCount: raw.samples.length,
+    totals: {
+      writeBytes,
+      readBytes,
+      writeBytesPerSecond: perSecond(writeBytes),
+      readBytesPerSecond: perSecond(readBytes),
+    },
+    files,
+    databases,
+    attribution,
+  }
+}
+
 /**
  * Collects one sample per call (drive it on a timer); the first call is the
- * baseline. `buildReport` aggregates the accumulated state and `rawCapture`
- * returns the full sample series for download.
+ * baseline. The class only gathers raw samples — `buildReport` replays them
+ * through `buildFilesReport`, the same path an uploaded download takes.
  */
 export class FileActivityCapture {
   private readonly procSelfDir: string
   private readonly bucketOptions: DataPathBucketOptions
   private readonly files = new Map<string, WatchedFile>()
-  private readonly dbs = new Map<string, WatchedDb>()
+  /** main database path → its -shm sibling */
+  private readonly dbs = new Map<string, string>()
   private readonly samples: FileActivitySample[] = []
-  private firstIo: ProcIoCounters | null = null
-  private lastIo: ProcIoCounters | null = null
   private startedAtMs: number | null = null
 
   constructor(options: FileActivityCaptureOptions = {}) {
@@ -284,10 +521,6 @@ export class FileActivityCapture {
       io: readProcIo(this.procSelfDir),
       files: {},
       walIndexes: {},
-    }
-    if (record.io) {
-      this.firstIo ??= record.io
-      this.lastIo = record.io
     }
 
     // Refresh the fd inventory every sample: files opened mid-capture join
@@ -311,40 +544,16 @@ export class FileActivityCapture {
         // deleted or replaced; counters just stop advancing
       }
       record.files[watched.path] = { size, mtimeMs }
-      if (size !== null && watched.lastSize !== null) {
-        watched.growthBytes += Math.max(size - watched.lastSize, 0)
-      }
-      if (mtimeMs !== null && watched.lastMtimeMs !== null && mtimeMs > watched.lastMtimeMs) {
-        watched.mtimeChanges += 1
-        if (size !== null && size === watched.lastSize) watched.inPlaceRewrites += 1
-      }
-      if (size !== null) watched.lastSize = size
-      if (mtimeMs !== null) watched.lastMtimeMs = mtimeMs
     }
 
-    for (const db of this.dbs.values()) {
-      let header: WalIndexHeader | null = null
+    for (const [dbPath, shmPath] of this.dbs) {
       try {
-        header = parseWalIndexHeader(await fs.readFile(db.shmPath))
+        const header = parseWalIndexHeader(await fs.readFile(shmPath))
+        // A torn read is skipped; the replay keeps the previous counters.
+        if (header) record.walIndexes[dbPath] = header
       } catch {
-        // shm gone (db closed); keep previous counters
+        // shm gone (db closed); counters just stop advancing
       }
-      if (!header) continue
-      record.walIndexes[db.path] = header
-      if (db.last) {
-        db.commits += uint32Delta(header.iChange, db.last.iChange)
-        if (header.mxFrame >= db.last.mxFrame) {
-          db.framesWritten += header.mxFrame - db.last.mxFrame
-        } else {
-          // The frame counter reset: a checkpoint copied the WAL into the
-          // main database and the WAL restarted from the beginning.
-          db.checkpoints += 1
-          db.checkpointedFrames += db.last.mxFrame
-          db.framesWritten += header.mxFrame
-        }
-      }
-      db.pageSize = header.pageSize
-      db.last = header
     }
 
     this.samples.push(record)
@@ -356,37 +565,21 @@ export class FileActivityCapture {
     if (existing) return existing
 
     const { kind, dbPath } = sqliteKindOf(filePath)
-    let resolvedKind = kind
-    if (kind === 'file' && existsSync(`${filePath}-shm`)) resolvedKind = 'sqlite-db'
+    const isDb = kind === 'file' && existsSync(`${filePath}-shm`)
 
     const watched: WatchedFile = {
       path: filePath,
-      kind: resolvedKind,
       seenOpen: false,
       readable: false,
       writable: false,
       append: false,
-      lastSize: null,
-      lastMtimeMs: null,
-      growthBytes: 0,
-      mtimeChanges: 0,
-      inPlaceRewrites: 0,
     }
     this.files.set(filePath, watched)
 
-    if (resolvedKind !== 'file' && discoverSiblings) {
-      const base = resolvedKind === 'sqlite-db' ? filePath : dbPath
+    if ((kind !== 'file' || isDb) && discoverSiblings) {
+      const base = isDb ? filePath : dbPath
       if (!this.dbs.has(base) && existsSync(`${base}-shm`)) {
-        this.dbs.set(base, {
-          path: base,
-          shmPath: `${base}-shm`,
-          pageSize: 0,
-          commits: 0,
-          framesWritten: 0,
-          checkpoints: 0,
-          checkpointedFrames: 0,
-          last: null,
-        })
+        this.dbs.set(base, `${base}-shm`)
       }
       for (const sibling of [base, `${base}-wal`, `${base}-shm`]) {
         if (!this.files.has(sibling) && existsSync(sibling)) this.watch(sibling, false)
@@ -396,114 +589,23 @@ export class FileActivityCapture {
   }
 
   buildReport(meta: FilesReportMeta): FilesReport {
-    const durationSeconds = Math.max(meta.durationMs / 1000, 1e-3)
-    const perSecond = (value: number) => Math.round((value / durationSeconds) * 10) / 10
-
-    const writeBytes =
-      this.firstIo && this.lastIo
-        ? Math.max(this.lastIo.writeBytes - this.firstIo.writeBytes, 0)
-        : 0
-    const readBytes =
-      this.firstIo && this.lastIo ? Math.max(this.lastIo.readBytes - this.firstIo.readBytes, 0) : 0
-
-    const files: FileActivityFile[] = [...this.files.values()]
-      .map((watched) => ({
-        path: watched.path,
-        bucket: bucketForDataPath(watched.path, this.bucketOptions),
-        mode: !watched.seenOpen
-          ? 'watched'
-          : watched.append
-            ? 'append'
-            : watched.writable
-              ? watched.readable
-                ? 'read-write'
-                : 'write'
-              : 'read',
-        kind: watched.kind,
-        sizeBytes: watched.lastSize ?? 0,
-        growthBytes: watched.growthBytes,
-        mtimeChanges: watched.mtimeChanges,
-        inPlaceRewrites: watched.inPlaceRewrites,
-      }))
-      .sort((a, b) => b.growthBytes - a.growthBytes || a.path.localeCompare(b.path))
-
-    const databases: SqliteActivity[] = [...this.dbs.values()]
-      .map((db) => {
-        const commitsPerSecond = Math.round((db.commits / durationSeconds) * 100) / 100
-        const estimatedWriteBytes =
-          db.framesWritten * (db.pageSize + WAL_FRAME_HEADER_BYTES) +
-          db.checkpointedFrames * db.pageSize
-        const notes: string[] = []
-        if (commitsPerSecond >= HIGH_COMMIT_RATE_PER_SECOND) {
-          notes.push(
-            `${commitsPerSecond}/s sustained commits — each one costs an fsync; consider batching writes`,
-          )
-        }
-        return {
-          path: db.path,
-          bucket: bucketForDataPath(db.path, this.bucketOptions),
-          pageSize: db.pageSize,
-          commits: db.commits,
-          commitsPerSecond,
-          framesWritten: db.framesWritten,
-          checkpoints: db.checkpoints,
-          estimatedWriteBytes,
-          notes,
-        }
-      })
-      .sort((a, b) => b.estimatedWriteBytes - a.estimatedWriteBytes)
-
-    // Attribute estimated writes per bucket: WAL math covers the SQLite
-    // family (db + wal + shm), size growth covers plain files. Whatever the
-    // process-wide counter saw beyond that is reported, not hidden.
-    const byBucket = new Map<string, number>()
-    const add = (bucket: string, bytes: number) => {
-      if (bytes > 0) byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + bytes)
-    }
-    for (const db of databases) add(db.bucket, db.estimatedWriteBytes)
-    for (const file of files) {
-      if (file.kind === 'file') add(file.bucket, file.growthBytes)
-    }
-    const attributed = [...byBucket.values()].reduce((sum, bytes) => sum + bytes, 0)
-    const percentOf = (bytes: number) =>
-      writeBytes > 0 ? Math.round((10000 * bytes) / writeBytes) / 100 : 0
-    const attribution: FilesAttributionRow[] = [...byBucket.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, bytes]) => ({
-        name,
-        estimatedWriteBytes: bytes,
-        percent: percentOf(bytes),
-      }))
-    const unattributed = Math.max(writeBytes - attributed, 0)
-    if (unattributed > 0 || attribution.length === 0) {
-      attribution.push({
-        name: UNATTRIBUTED_BUCKET,
-        estimatedWriteBytes: unattributed,
-        percent: percentOf(unattributed),
-      })
-    }
-
-    return {
-      id: meta.id,
-      type: 'files',
-      capturedAt: meta.capturedAt,
-      durationMs: meta.durationMs,
-      sampleIntervalSeconds: meta.sampleIntervalSeconds,
-      sampleCount: this.samples.length,
-      totals: {
-        writeBytes,
-        readBytes,
-        writeBytesPerSecond: perSecond(writeBytes),
-        readBytesPerSecond: perSecond(readBytes),
-      },
-      files,
-      databases,
-      attribution,
-    }
+    return buildFilesReport(this.rawCapture(), meta, this.bucketOptions)
   }
 
-  /** The full sample series, stored as the capture's downloadable raw file. */
-  rawCapture(): { samples: FileActivitySample[] } {
-    return { samples: this.samples }
+  /** The full sample series + open modes, stored as the downloadable raw file. */
+  rawCapture(): FilesRawCapture {
+    const modes: Record<string, string> = {}
+    for (const watched of this.files.values()) {
+      modes[watched.path] = !watched.seenOpen
+        ? 'watched'
+        : watched.append
+          ? 'append'
+          : watched.writable
+            ? watched.readable
+              ? 'read-write'
+              : 'write'
+            : 'read'
+    }
+    return { samples: this.samples, modes }
   }
 }

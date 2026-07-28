@@ -87,7 +87,7 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
       <input
         ref={fileInput}
         type="file"
-        accept=".json,.cpuprofile,.heapprofile,application/json"
+        accept=".json,.cpuprofile,.heapprofile,.filesprofile,application/json"
         className="hidden"
         aria-label="Upload profile JSON"
         onChange={(event) => {

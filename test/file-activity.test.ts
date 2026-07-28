@@ -8,11 +8,15 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  buildFilesReport,
   FileActivityCapture,
+  inferFilesCaptureMeta,
+  isFilesRawCapture,
   listOpenFiles,
   parseProcIo,
   parseWalIndexHeader,
   readProcIo,
+  type FilesRawCapture,
 } from '../src/file-activity'
 import { bucketForDataPath } from '../src/attribution'
 
@@ -305,6 +309,24 @@ describe('FileActivityCapture', () => {
     expect(raw.samples).toHaveLength(3)
     expect(raw.samples[2].io?.writeBytes).toBe(300_000)
     expect(raw.samples[2].walIndexes[db]).toMatchObject({ iChange: 107, mxFrame: 2 })
+    expect(raw.modes?.[log]).toBe('append')
+
+    // Replaying the serialized raw capture (what download → upload does)
+    // rebuilds the identical report.
+    const replayed = JSON.parse(JSON.stringify(raw)) as FilesRawCapture
+    expect(isFilesRawCapture(replayed)).toBe(true)
+    expect(
+      buildFilesReport(
+        replayed,
+        {
+          id: 'files-2026-07-29T00-00-00-000Z',
+          capturedAt: '2026-07-29T00:00:00.000Z',
+          durationMs: 2000,
+          sampleIntervalSeconds: 1,
+        },
+        { dataRoot },
+      ),
+    ).toEqual(report)
   })
 
   it('keeps previous counters over a torn shm read', async () => {
@@ -334,5 +356,31 @@ describe('FileActivityCapture', () => {
       sampleIntervalSeconds: 1,
     })
     expect(report.databases[0]).toMatchObject({ commits: 2, framesWritten: 2, checkpoints: 0 })
+  })
+})
+
+describe('raw capture shape and metadata inference', () => {
+  const sample = (offsetMs: number) => ({ offsetMs, io: null, files: {}, walIndexes: {} })
+
+  it('recognizes saved captures and rejects other JSON', () => {
+    expect(isFilesRawCapture({ samples: [sample(0), sample(1000)] })).toBe(true)
+    expect(isFilesRawCapture({ samples: [] })).toBe(false)
+    expect(isFilesRawCapture({ samples: ['x'] })).toBe(false)
+    expect(isFilesRawCapture({ samples: [{ offsetMs: 'zero' }] })).toBe(false)
+    expect(isFilesRawCapture({ nodes: [] })).toBe(false)
+    expect(isFilesRawCapture(null)).toBe(false)
+    expect(isFilesRawCapture('samples')).toBe(false)
+  })
+
+  it('infers duration and sample interval from the offsets', () => {
+    expect(inferFilesCaptureMeta({ samples: [sample(0), sample(1000), sample(2100)] })).toEqual({
+      durationMs: 2100,
+      sampleIntervalSeconds: 1.1,
+    })
+    // A single sample can infer no interval; fall back to the 1s default.
+    expect(inferFilesCaptureMeta({ samples: [sample(0)] })).toEqual({
+      durationMs: 0,
+      sampleIntervalSeconds: 1,
+    })
   })
 })

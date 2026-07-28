@@ -15,7 +15,13 @@ import {
   type DataPathBucketOptions,
   type SamplingHeapProfile,
 } from './attribution'
-import { FileActivityCapture } from './file-activity'
+import {
+  buildFilesReport,
+  FileActivityCapture,
+  inferFilesCaptureMeta,
+  isFilesRawCapture,
+  type FilesRawCapture,
+} from './file-activity'
 import {
   capturedAtFromProfileId,
   embeddedProfileMetaOf,
@@ -24,7 +30,7 @@ import {
   profileTypeOf,
   type ProfileStore,
 } from './store'
-import type { ProfileType, RunningCapture } from './shared/types'
+import type { ProfileReport, ProfileType, RunningCapture } from './shared/types'
 
 export class CaptureBusyError extends Error {
   constructor() {
@@ -35,7 +41,7 @@ export class CaptureBusyError extends Error {
 
 export class InvalidProfileError extends Error {
   constructor() {
-    super('file is not a V8 .cpuprofile or .heapprofile JSON')
+    super('file is not a V8 .cpuprofile/.heapprofile or a saved files capture JSON')
     this.name = 'InvalidProfileError'
   }
 }
@@ -97,7 +103,7 @@ function isHeapProfile(raw: unknown): raw is SamplingHeapProfile {
 
 function idFromFilename(filename: string | undefined, type: ProfileType): string | null {
   if (!filename) return null
-  const base = filename.replace(/\.(json|cpuprofile|heapprofile)$/i, '')
+  const base = filename.replace(/\.(json|cpuprofile|heapprofile|filesprofile)$/i, '')
   if (!isValidProfileId(base) || profileTypeOf(base) !== type) return null
   return base
 }
@@ -321,7 +327,13 @@ export class CaptureManager {
    * from other tools or older plugin versions.
    */
   async importProfile(raw: unknown, options: ImportProfileOptions): Promise<string> {
-    const type = isCpuProfile(raw) ? 'cpu' : isHeapProfile(raw) ? 'heap' : null
+    const type = isCpuProfile(raw)
+      ? 'cpu'
+      : isHeapProfile(raw)
+        ? 'heap'
+        : isFilesRawCapture(raw)
+          ? 'files'
+          : null
     if (!type) throw new InvalidProfileError()
 
     const embedded = embeddedProfileMetaOf(raw)
@@ -331,29 +343,45 @@ export class CaptureManager {
     const id = embeddedId ?? idFromFilename(options.filename, type) ?? makeProfileId(type, now)
     const capturedAt = embedded.capturedAt ?? capturedAtFromProfileId(id) ?? now.toISOString()
 
-    const report =
-      type === 'cpu'
-        ? buildCpuReport(
-            raw as CpuProfile,
-            {
-              id,
-              capturedAt,
-              samplingIntervalUs: embedded.samplingIntervalUs ?? options.samplingIntervalUs,
-            },
-            this.options.bucketOptions,
-          )
-        : buildHeapReport(
-            raw as SamplingHeapProfile,
-            // A raw heap profile records no wall-clock duration itself.
-            {
-              id,
-              capturedAt,
-              durationMs: embedded.durationMs ?? 0,
-              samplingIntervalBytes:
-                embedded.samplingIntervalBytes ?? options.samplingIntervalBytes,
-            },
-            this.options.bucketOptions,
-          )
+    let report: ProfileReport
+    if (type === 'cpu') {
+      report = buildCpuReport(
+        raw as CpuProfile,
+        {
+          id,
+          capturedAt,
+          samplingIntervalUs: embedded.samplingIntervalUs ?? options.samplingIntervalUs,
+        },
+        this.options.bucketOptions,
+      )
+    } else if (type === 'heap') {
+      report = buildHeapReport(
+        raw as SamplingHeapProfile,
+        // A raw heap profile records no wall-clock duration itself.
+        {
+          id,
+          capturedAt,
+          durationMs: embedded.durationMs ?? 0,
+          samplingIntervalBytes: embedded.samplingIntervalBytes ?? options.samplingIntervalBytes,
+        },
+        this.options.bucketOptions,
+      )
+    } else {
+      // The raw sample series replays into the same report a live capture
+      // builds; duration and interval fall back to the samples themselves.
+      const capture = raw as FilesRawCapture
+      const inferred = inferFilesCaptureMeta(capture)
+      report = buildFilesReport(
+        capture,
+        {
+          id,
+          capturedAt,
+          durationMs: embedded.durationMs ?? inferred.durationMs,
+          sampleIntervalSeconds: embedded.sampleIntervalSeconds ?? inferred.sampleIntervalSeconds,
+        },
+        this.options.dataPathOptions,
+      )
+    }
 
     await this.options.store.save(report, raw)
     return id

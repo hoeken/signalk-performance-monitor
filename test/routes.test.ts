@@ -121,7 +121,9 @@ class FakeCaptures implements CaptureController {
 
   async importProfile(raw: unknown, options: ImportProfileOptions): Promise<string> {
     const looksLikeProfile =
-      raw !== null && typeof raw === 'object' && ('nodes' in raw || 'head' in raw)
+      raw !== null &&
+      typeof raw === 'object' &&
+      ('nodes' in raw || 'head' in raw || 'samples' in raw)
     if (!looksLikeProfile) throw new InvalidProfileError()
     this.importCalls.push({ raw, options })
     return 'cpu-imported'

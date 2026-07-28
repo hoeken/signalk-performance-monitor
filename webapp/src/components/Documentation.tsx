@@ -206,7 +206,8 @@ export function Documentation() {
           it. The one extra <code>signalk-performance-monitor</code> key holds capture metadata;
           other tools ignore it, and it is what lets <strong>Upload</strong> restore the profile
           here. File profiles are this plugin&apos;s own format: the download is the raw per-second
-          sample series as JSON, for your own analysis.
+          sample series as JSON, for your own analysis — and <strong>Upload</strong> rebuilds the
+          report from it, same as the V8 formats.
         </p>
         <p>
           <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">

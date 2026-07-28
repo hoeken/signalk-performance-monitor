@@ -162,6 +162,62 @@ describe('CaptureManager', () => {
     expect(raw.samples.length).toBe(report.sampleCount)
   })
 
+  it('round-trips a files capture through download and import', async () => {
+    const procSelf = path.join(dir, 'proc-self-roundtrip')
+    await fs.mkdir(path.join(procSelf, 'fd'), { recursive: true })
+    await fs.mkdir(path.join(procSelf, 'fdinfo'), { recursive: true })
+    await fs.writeFile(path.join(procSelf, 'io'), 'read_bytes: 0\nwrite_bytes: 500\n')
+    const filesManager = new CaptureManager({
+      store,
+      procSelfDir: procSelf,
+      dataPathOptions: { dataRoot: dir },
+      onError: (error) => errors.push(error),
+    })
+
+    const id = await filesManager.startFiles({ durationSeconds: 0.3, sampleIntervalSeconds: 0.1 })
+    await fs.writeFile(path.join(procSelf, 'io'), 'read_bytes: 0\nwrite_bytes: 42500\n')
+    await waitForIdle(filesManager)
+    expect(errors).toEqual([])
+
+    const original = await store.getReport(id)
+    const raw: unknown = JSON.parse((await store.getRaw(id))!.toString())
+    await store.delete(id)
+
+    const importedId = await filesManager.importProfile(raw, {
+      samplingIntervalUs: 9999,
+      samplingIntervalBytes: 9999,
+    })
+
+    expect(importedId).toBe(id)
+    expect(await store.getReport(id)).toEqual(original)
+  })
+
+  it('imports a files capture without embedded metadata via its filename', async () => {
+    const raw = {
+      samples: [
+        { offsetMs: 0, io: { readBytes: 0, writeBytes: 100 }, files: {}, walIndexes: {} },
+        { offsetMs: 5000, io: { readBytes: 0, writeBytes: 900 }, files: {}, walIndexes: {} },
+      ],
+    }
+    const id = await manager.importProfile(raw, {
+      samplingIntervalUs: 1000,
+      samplingIntervalBytes: 32768,
+      filename: 'files-2026-07-05T06-00-00-000Z.json',
+    })
+
+    expect(id).toBe('files-2026-07-05T06-00-00-000Z')
+    const report = (await store.getReport(id)) as FilesReport
+    expect(report.type).toBe('files')
+    expect(report.capturedAt).toBe('2026-07-05T06:00:00.000Z')
+    // Duration and interval come from the samples themselves.
+    expect(report.durationMs).toBe(5000)
+    expect(report.sampleIntervalSeconds).toBe(5)
+    expect(report.totals.writeBytes).toBe(800)
+    expect(report.attribution).toEqual([
+      { name: '(unattributed)', estimatedWriteBytes: 800, percent: 100 },
+    ])
+  })
+
   it('refuses file captures without a proc filesystem', async () => {
     const noProc = new CaptureManager({ store, procSelfDir: path.join(dir, 'missing') })
     await expect(
@@ -306,8 +362,18 @@ describe('CaptureManager', () => {
     expect(id).toMatch(/^heap-/)
   })
 
-  it('rejects files that are not V8 profiles', async () => {
-    for (const raw of [null, 'hello', 42, {}, { nodes: 'nope' }, { head: { selfSize: 1 } }]) {
+  it('rejects files that are not V8 profiles or files captures', async () => {
+    for (const raw of [
+      null,
+      'hello',
+      42,
+      {},
+      { nodes: 'nope' },
+      { head: { selfSize: 1 } },
+      { samples: [] },
+      { samples: ['x'] },
+      { samples: [{ offsetMs: 'zero', files: {}, walIndexes: {} }] },
+    ]) {
       await expect(
         manager.importProfile(raw, { samplingIntervalUs: 1000, samplingIntervalBytes: 32768 }),
       ).rejects.toThrow(InvalidProfileError)
