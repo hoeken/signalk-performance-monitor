@@ -7,12 +7,13 @@ import { formatBytes, formatMs } from '../format'
  * width ∝ total time/bytes of the frame within the zoomed view. Click a
  * frame to zoom to it, click an ancestor (or Reset) to zoom back out.
  *
- * Frames are colored by attribution bucket. The four hues validated
- * against this app's light surface for arbitrary adjacency (all-pairs
- * CVD ΔE ≥ 8, normal ≥ 15) cover signalk core and the top packages;
- * every other bucket folds into neutral grays. Identity never rides on
- * color alone: wide frames carry their name, and every frame has a
- * tooltip (hover and keyboard focus) plus the bucket table below.
+ * Frames are colored by attribution bucket. The four hues (per-theme
+ * values in App.css, validated against each theme's surface for
+ * arbitrary adjacency: all-pairs CVD ΔE ≥ 8, normal ≥ 15) cover signalk
+ * core and the top packages; every other bucket folds into neutral
+ * grays. Identity never rides on color alone: wide frames carry their
+ * name, and every frame has a tooltip (hover and keyboard focus) plus
+ * the bucket table below.
  */
 
 const ROW_HEIGHT = 20
@@ -26,12 +27,17 @@ const CORE_BUCKET = 'signalk-server (core)'
 const SYNTHETIC = /^\(.+\)$/
 
 /** Slot order is the CVD-safety mechanism — never reshuffled or cycled. */
-const HUE_SLOTS = ['#2a78d6', '#eb6834', '#1baf7a', '#4a3aa7']
-/** Fills whose labels need white text; the rest take dark ink. */
-const DARK_FILLS = new Set(['#4a3aa7'])
-const IDLE_FILL = '#f0efec'
-const SYSTEM_FILL = '#c3c2b7'
-const FOLDED_FILL = '#898781'
+const HUE_SLOTS = [
+  'var(--flame-hue-1)',
+  'var(--flame-hue-2)',
+  'var(--flame-hue-3)',
+  'var(--flame-hue-4)',
+]
+const IDLE_FILL = 'var(--flame-idle)'
+const SYSTEM_FILL = 'var(--flame-system)'
+const FOLDED_FILL = 'var(--flame-folded)'
+/** Every fill variable has a matching label-ink variable in App.css. */
+const inkFor = (fill: string) => fill.replace(')', '-ink)')
 
 interface Frame {
   node: FlameNode
@@ -217,7 +223,7 @@ export function FlameGraph({ root, type }: { root: FlameNode; type: ProfileType 
                   width: `${Number(frame.width.toFixed(3))}%`,
                   height: ROW_HEIGHT,
                   backgroundColor: fill,
-                  color: DARK_FILLS.has(fill) ? '#ffffff' : '#0b0b0b',
+                  color: inkFor(fill),
                 }}
                 onClick={() => setFocus(node)}
                 onMouseMove={(event) => {

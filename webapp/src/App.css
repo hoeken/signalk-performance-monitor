@@ -1,6 +1,17 @@
 @import 'tailwindcss';
 
-/* Single light theme; tokens from the data-viz reference palette. No dark mode. */
+/*
+ * Light + dark themes; tokens from the data-viz reference palette, dark
+ * steps selected for the dark surface (not a flip of the light values).
+ * 'perfmon' is the default, 'perfmon-dark' applies under
+ * prefers-color-scheme: dark; an explicit data-theme on <html> (set by
+ * the header toggle) wins over both.
+ *
+ * The --flame-* variables are the flame-graph bucket fills and their
+ * label ink, consumed by FlameGraph.tsx. Each mode's four hue slots were
+ * validated all-pairs on that mode's base-100 surface (CVD ΔE ≥ 8,
+ * normal ≥ 15) with the skill validator — re-run it if you touch them.
+ */
 @plugin 'daisyui' {
   themes: false;
 }
@@ -40,4 +51,76 @@
   --border: 1px;
   --depth: 0;
   --noise: 0;
+
+  --flame-hue-1: #2a78d6;
+  --flame-hue-1-ink: #0b0b0b;
+  --flame-hue-2: #eb6834;
+  --flame-hue-2-ink: #0b0b0b;
+  --flame-hue-3: #1baf7a;
+  --flame-hue-3-ink: #0b0b0b;
+  --flame-hue-4: #4a3aa7;
+  --flame-hue-4-ink: #ffffff;
+  --flame-idle: #f0efec;
+  --flame-idle-ink: #0b0b0b;
+  --flame-system: #c3c2b7;
+  --flame-system-ink: #0b0b0b;
+  --flame-folded: #898781;
+  --flame-folded-ink: #0b0b0b;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'perfmon-dark';
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #1a1a19;
+  --color-base-200: #0d0d0d;
+  --color-base-300: #2c2c2a;
+  --color-base-content: #ffffff;
+  --color-primary: #3987e5;
+  --color-primary-content: #0b0b0b;
+  --color-secondary: #c3c2b7;
+  --color-secondary-content: #0b0b0b;
+  --color-accent: #199e70;
+  --color-accent-content: #0b0b0b;
+  --color-neutral: #52514e;
+  --color-neutral-content: #ffffff;
+  --color-info: #3987e5;
+  --color-info-content: #0b0b0b;
+  --color-success: #0ca30c;
+  --color-success-content: #0b0b0b;
+  --color-warning: #fab219;
+  --color-warning-content: #0b0b0b;
+  --color-error: #d03b3b;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+
+  /* Slot 4 is a darker violet than the reference dark step (#9085e9),
+     which is CVD-indistinguishable from slot-1 blue; #5a4bbd restores the
+     lightness separation the light theme's #4a3aa7 provides. It sits at
+     2.6:1 on the surface — the relief rule is met by frame labels,
+     tooltips, and the bucket table. */
+  --flame-hue-1: #3987e5;
+  --flame-hue-1-ink: #0b0b0b;
+  --flame-hue-2: #d95926;
+  --flame-hue-2-ink: #0b0b0b;
+  --flame-hue-3: #199e70;
+  --flame-hue-3-ink: #0b0b0b;
+  --flame-hue-4: #5a4bbd;
+  --flame-hue-4-ink: #ffffff;
+  --flame-idle: #2c2c2a;
+  --flame-idle-ink: #ffffff;
+  --flame-system: #383835;
+  --flame-system-ink: #ffffff;
+  --flame-folded: #898781;
+  --flame-folded-ink: #0b0b0b;
 }

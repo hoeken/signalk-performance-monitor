@@ -4,9 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Tints the mobile browser toolbar; matches theme_color in
-         site.webmanifest and the daisyUI base-100 colour in src/App.css. -->
-    <meta name="theme-color" content="#fcfcfb" />
+         site.webmanifest and the daisyUI base-100 colours in src/App.css.
+         ThemeToggle rewrites both when the user picks a theme manually. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1a19" />
     <title>Performance Monitor</title>
+
+    <!-- Re-apply a stored theme choice before first paint so a toggle
+         opposite the OS preference doesn't flash the wrong theme. Key and
+         names must match src/components/ThemeToggle.tsx. -->
+    <script>
+      try {
+        var mode = localStorage.getItem('signalk-performance-monitor:theme')
+        if (mode === 'light' || mode === 'dark')
+          document.documentElement.dataset.theme = mode === 'dark' ? 'perfmon-dark' : 'perfmon'
+      } catch (e) {}
+    </script>
 
     <!-- Add-to-home-screen launch behaviour. Android/Chrome reads
          site.webmanifest (display: standalone); iOS Safari ignores the

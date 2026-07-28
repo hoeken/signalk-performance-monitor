@@ -12,6 +12,7 @@ import { MetricsTiles } from './components/MetricsTiles'
 import { ProfileControls } from './components/ProfileControls'
 import { ProfileList } from './components/ProfileList'
 import { ReportView } from './components/ReportView'
+import { ThemeToggle } from './components/ThemeToggle'
 
 const METRICS_POLL_MS = 2000
 const PROFILES_POLL_MS = 5000
@@ -100,8 +101,11 @@ export function App() {
   return (
     <div className="min-h-screen bg-base-200">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6">
-        <header className="flex flex-wrap items-baseline justify-between gap-3">
-          <h1 className="text-xl font-semibold">Performance Monitor</h1>
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl font-semibold">Performance Monitor</h1>
+            <ThemeToggle />
+          </div>
           {metrics ? (
             <span className="text-xs text-base-content/60">
               updated {formatDateTime(metrics.timestamp)}
