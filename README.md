@@ -53,8 +53,7 @@ server ≥ 2.x.
 | `performance.memory.heapUsed` / `.rss`             | bytes            |
 | `performance.cpu.utilization`                      | ratio            |
 
-The prefix (`performance`) is configurable. Delta publishing can be disabled entirely,
-leaving webapp/HTTP-only access.
+Delta publishing can be disabled entirely, leaving webapp/HTTP-only access.
 
 ## HTTP API
 
