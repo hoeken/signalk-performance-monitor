@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { ProfileReport } from '../../../src/shared/types'
 import { formatBytes, formatDateTime } from '../format'
+import { FlameGraph } from './FlameGraph'
 
 interface ReportRow {
   name: string
@@ -63,6 +64,13 @@ export function ReportView({ report }: { report: ProfileReport }) {
           ? ` · sampled every ${report.samplingIntervalUs} µs`
           : ` · sampled every ${formatBytes(report.samplingIntervalBytes)}`}
       </p>
+      {report.flame ? (
+        <FlameGraph key={report.id} root={report.flame} type={report.type} />
+      ) : (
+        <p className="text-xs text-base-content/50">
+          This report predates flame graphs — capture a new profile to get one.
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="table table-sm">
           <thead>

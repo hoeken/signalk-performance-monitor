@@ -1,8 +1,8 @@
 # signalk-performance-monitor — Specification
 
-> **Status:** implemented. This document describes the plugin as built (v0.4.0 — all four
-> planned milestones shipped, including allocation profiling). Remaining ideas live under
-> [Future work](#future-work).
+> **Status:** implemented. This document describes the plugin as built (v0.5.0 — all
+> planned milestones shipped, including allocation profiling and the in-browser flame
+> graph). Remaining ideas live under [Future work](#future-work).
 
 ## Overview
 
@@ -94,11 +94,20 @@ Report format (`CpuReport` in `src/shared/types.ts`; buckets sorted by self-time
       "percent": 17.4,
       "topFunctions": [{ "name": "buildFullFromDeltas", "url": "...", "selfTimeMs": 3100 }]
     }
-  ]
+  ],
+  "flame": {
+    "name": "(root)",
+    "bucket": "(root)",
+    "self": 0,
+    "total": 29988400,
+    "children": ["..."]
+  }
 }
 ```
 
 Each bucket includes `topFunctions` (top 10 by self-time) so plugin authors can act on reports — except pure synthetic buckets like `(idle)`, where a function list would add nothing and is omitted.
+
+Each report also carries a `flame` field (`FlameNode` in `src/shared/types.ts`): the aggregated call tree the webapp renders as a flame graph. Every node has `name`, `bucket` (same attribution as the report buckets), `self`, `total`, optional `url` and `children` — integer microseconds for CPU, bytes for heap, so child widths always sum to at most the parent. Subtrees below 0.1% of the root total are pruned; their cost stays in every ancestor's `total`, it just isn't broken down further. Siblings are sorted by `total` descending. `flame` is absent when nothing was sampled (and in reports written by pre-flame-graph versions, which the webapp explains with a note).
 
 ## Feature 4: Allocation profiling
 
@@ -153,8 +162,8 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 - **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU" and "Profile allocations" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
 - **Profile list** (`ProfileList`) — stored captures with select, raw download, and delete.
 - **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket.
+- **Flame graph** (`FlameGraph`) — in-browser icicle flame graph for both report types, built from the report's `flame` tree with no charting library. Click a frame to zoom (ancestors stay as dimmed full-width context), hover or keyboard-focus for a tooltip (value, % of view / % of capture, function, bucket, url), legend above the graph. Frames are colored by attribution bucket: four hues validated for arbitrary adjacency on the app's light surface (signalk core pinned to blue, top packages get orange/aqua/violet), everything else in neutral grays. Frame names render inline only when they measurably fit; identity never relies on color alone (labels, tooltip, and the bucket table below).
 - API client (`webapp/src/api.ts`) maps 401/403 to an "Admin login required" banner; shared types are imported directly from `src/shared/types.ts` so the API contract is compile-time checked.
-- Flamegraph rendering deferred (raw file opens in DevTools/speedscope).
 
 ## Plugin lifecycle
 
@@ -197,16 +206,16 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 
 ## Milestones
 
-All shipped as of v0.4.0:
+All shipped as of v0.5.0:
 
 1. **v0.1** — metrics collection + delta publishing + `/metrics` route. ✅
 2. **v0.2** — CPU capture + raw `.cpuprofile` storage/download. ✅
 3. **v0.3** — per-plugin aggregation report + React webapp. ✅
 4. **v0.4** — allocation profiling. ✅
+5. **v0.5** — in-browser flame graph for CPU and allocation reports. ✅
 
 ## Future work
 
-- In-browser flamegraph (raw files already open in DevTools/speedscope).
 - Loop-delay alerting via Signal K notifications.
 - Optionally graduate always-on gauges into server core (`deltastats.ts`) as a separate PR, with this plugin as evidence.
 

@@ -25,9 +25,10 @@ modifications, no changes to other plugins.**
 - **Allocation profiling** (sampling heap profiler) with the same per-plugin bucketing:
   see which plugin allocates most. Full heap snapshots are deliberately not exposed
   (unsafe on memory-constrained hardware).
-- **Webapp**: live metric tiles, one-click "Profile for 30s", per-plugin table with
-  share bars and expandable top functions, raw `.cpuprofile` download (opens in Chrome
-  DevTools or [speedscope](https://www.speedscope.app/)).
+- **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
+  graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
+  per-plugin table with share bars and expandable top functions, raw `.cpuprofile`
+  download (opens in Chrome DevTools or [speedscope](https://www.speedscope.app/)).
 
 ## Install
 
@@ -88,9 +89,19 @@ Example report:
         { "name": "buildFullFromDeltas", "url": "…/lib/fullsignalk.js", "selfTimeMs": 3100 }
       ]
     }
-  ]
+  ],
+  "flame": {
+    "name": "(root)",
+    "bucket": "(root)",
+    "self": 0,
+    "total": 29988400,
+    "children": ["… the aggregated call tree (µs for CPU, bytes for heap) …"]
+  }
 }
 ```
+
+`flame` is the call tree the webapp renders as a flame graph; subtrees below 0.1% of
+the total are pruned (their cost stays in the ancestors' totals).
 
 ## Configuration
 

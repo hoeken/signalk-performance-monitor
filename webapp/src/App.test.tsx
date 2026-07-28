@@ -83,8 +83,10 @@ describe('App', () => {
     await user.click(reportButtons[0]!)
 
     expect(await screen.findByText('Per-plugin report')).toBeInTheDocument()
-    expect(screen.getByText('signalk-server (core)')).toBeInTheDocument()
+    // The bucket name appears in both the flame graph legend and the table.
+    expect(screen.getAllByText('signalk-server (core)').length).toBeGreaterThan(0)
     expect(screen.getByText('61.2%')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Flame graph' })).toBeInTheDocument()
 
     await user.click(reportButtons[0]!)
     expect(screen.queryByText('Per-plugin report')).not.toBeInTheDocument()

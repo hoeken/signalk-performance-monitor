@@ -269,4 +269,124 @@ describe('buildHeapReport', () => {
       },
     ])
   })
+
+  it('builds a flame tree mirroring the sampled call tree', () => {
+    const report = buildHeapReport(heapProfile, meta)
+    const root = report.flame
+    expect(root?.name).toBe('(root)')
+    expect(root?.total).toBe(4096)
+    expect(root?.children?.map((c) => c.name)).toEqual(['allocateBuffers', 'makeStrings'])
+
+    const alloc = root?.children?.[0]
+    expect(alloc?.bucket).toBe('plugin-x')
+    expect(alloc?.self).toBe(2048)
+    expect(alloc?.total).toBe(3072)
+    expect(alloc?.children).toEqual([
+      { name: 'concat', bucket: NODE_RUNTIME_BUCKET, self: 1024, total: 1024, url: 'node:buffer' },
+    ])
+  })
+
+  it('omits the flame tree when nothing was sampled', () => {
+    const empty: SamplingHeapProfile = {
+      head: { callFrame: { functionName: '(root)', url: '' }, selfSize: 0, children: [] },
+    }
+    expect(buildHeapReport(empty, meta).flame).toBeUndefined()
+  })
+})
+
+describe('cpu flame tree', () => {
+  const fixture = JSON.parse(
+    readFileSync(join(__dirname, 'fixtures', 'sample.cpuprofile'), 'utf8'),
+  ) as CpuProfile
+  const meta = { id: 'cpu-test', capturedAt: '2026-07-28T00:00:00.000Z', samplingIntervalUs: 1000 }
+
+  it('roots the tree at (root) with children sorted by total time', () => {
+    const root = buildCpuReport(fixture, meta).flame
+    expect(root?.name).toBe('(root)')
+    expect(root?.self).toBe(0)
+    expect(root?.total).toBe(20000)
+
+    const totals = root?.children?.map((c) => c.total) ?? []
+    expect(totals).toEqual([...totals].sort((a, b) => b - a))
+    expect(root?.children?.[0]?.name).toBe('(idle)')
+    expect(root?.children?.[0]?.total).toBe(6000)
+  })
+
+  it('attributes each frame to a bucket and keeps its url', () => {
+    const root = buildCpuReport(fixture, meta).flame
+    const frame = root?.children?.find((c) => c.name === 'processDeltas')
+    expect(frame).toEqual({
+      name: 'processDeltas',
+      bucket: SIGNALK_CORE_BUCKET,
+      self: 3000,
+      total: 3000,
+      url: 'file:///usr/lib/node_modules/signalk-server/lib/deltas.js',
+    })
+    const anonymous = root?.children?.find((c) => c.name === '(anonymous)')
+    expect(anonymous?.bucket).toBe(OTHER_BUCKET)
+    expect(anonymous?.url).toBeUndefined()
+  })
+
+  it('sums totals as self plus descendants', () => {
+    const profile: CpuProfile = {
+      nodes: [
+        { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [2] },
+        {
+          id: 2,
+          callFrame: { functionName: 'outer', url: '/x/node_modules/pkg/i.js' },
+          children: [3],
+        },
+        { id: 3, callFrame: { functionName: 'inner', url: '/x/node_modules/pkg/i.js' } },
+      ],
+      startTime: 0,
+      endTime: 3000,
+      samples: [2, 3, 3],
+      timeDeltas: [1000, 1000, 1000],
+    }
+    const root = buildCpuReport(profile, meta).flame
+    expect(root?.total).toBe(3000)
+    const outer = root?.children?.[0]
+    expect(outer?.self).toBe(1000)
+    expect(outer?.total).toBe(3000)
+    expect(outer?.children?.[0]).toMatchObject({ name: 'inner', self: 2000, total: 2000 })
+  })
+
+  it('prunes subtrees below 0.1% of the total without shrinking ancestors', () => {
+    const profile: CpuProfile = {
+      nodes: [
+        { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [2, 3] },
+        { id: 2, callFrame: { functionName: 'big', url: '/x/node_modules/pkg/i.js' } },
+        { id: 3, callFrame: { functionName: 'tiny', url: '/x/node_modules/pkg/i.js' } },
+      ],
+      startTime: 0,
+      endTime: 999500,
+      samples: [2, 3],
+      timeDeltas: [999000, 500],
+    }
+    const root = buildCpuReport(profile, meta).flame
+    expect(root?.total).toBe(999500)
+    expect(root?.children?.map((c) => c.name)).toEqual(['big'])
+  })
+
+  it('synthesizes a root when the profile has several top-level nodes', () => {
+    const profile: CpuProfile = {
+      nodes: [
+        { id: 1, callFrame: { functionName: 'a', url: '/x/node_modules/pkg/i.js' } },
+        { id: 2, callFrame: { functionName: 'b', url: '/x/node_modules/pkg/i.js' } },
+      ],
+      startTime: 0,
+      endTime: 2000,
+      samples: [1, 2],
+      timeDeltas: [1000, 1000],
+    }
+    const root = buildCpuReport(profile, meta).flame
+    expect(root?.name).toBe('(root)')
+    expect(root?.total).toBe(2000)
+    expect(root?.children).toHaveLength(2)
+  })
+
+  it('omits the flame tree for an empty profile', () => {
+    const profile: CpuProfile = { nodes: [], startTime: 0, endTime: 0, samples: [], timeDeltas: [] }
+    expect(buildCpuReport(profile, meta).flame).toBeUndefined()
+  })
 })

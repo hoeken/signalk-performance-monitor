@@ -34,6 +34,23 @@ export interface MetricsSnapshot {
 
 export type ProfileType = 'cpu' | 'heap'
 
+/**
+ * One frame of the aggregated call tree rendered as a flame graph.
+ * `self`/`total` are integer microseconds for CPU reports and bytes for
+ * heap reports; integers so child widths always sum to at most the parent.
+ * Subtrees below 0.1% of the root total are pruned — their cost stays in
+ * every ancestor's `total`, it just isn't broken down further.
+ */
+export interface FlameNode {
+  name: string
+  /** Attribution bucket of this frame, same names as the report buckets. */
+  bucket: string
+  self: number
+  total: number
+  url?: string
+  children?: FlameNode[]
+}
+
 export interface CpuTopFunction {
   name: string
   url: string
@@ -55,6 +72,8 @@ export interface CpuReport {
   samplingIntervalUs: number
   totalTimeMs: number
   buckets: CpuBucket[]
+  /** Absent when the capture had no samples, or in reports from older versions. */
+  flame?: FlameNode
 }
 
 export interface HeapTopFunction {
@@ -78,6 +97,8 @@ export interface HeapReport {
   samplingIntervalBytes: number
   totalBytes: number
   buckets: HeapBucket[]
+  /** Absent when nothing was sampled, or in reports from older versions. */
+  flame?: FlameNode
 }
 
 export type ProfileReport = CpuReport | HeapReport
