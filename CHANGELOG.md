@@ -1,3 +1,9 @@
+# v1.2.0
+
+- HTTP request tracking: a ring buffer of the last 100 requests (method, path with query string, status, duration, response size) plus cumulative per-method+path aggregates (count, average/max/total duration, errors, bytes), observed from the same `http` performance entries as the metrics collector and served by a new admin-only `GET /http-requests` route
+- New HTTP Requests section in the webapp with Latest and Aggregate tabs: sortable, searchable tables with pagination, GET paths linked to the live URL, duration heat colors, a default-on "Hide this plugin" toggle, and a Download button exporting the current view (sorted and filtered) as timestamped JSON
+- Profile button tweaks: "JSON" renamed to "Download", "Upload" to "Upload Profile", and View/Download button colors swapped
+
 # v1.1.0
 
 - HTTP request timing metrics: `performance.http.requestRate` and `performance.http.requestDuration.p50/p99/max`, measured via a PerformanceObserver on `http` entries — every inbound request the server handles is timed with zero instrumentation and no cost while stopped
