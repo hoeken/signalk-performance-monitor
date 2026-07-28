@@ -12,6 +12,7 @@
     "build": "npm run build:plugin && npm run build:webapp",
     "build:plugin": "tsc -p tsconfig.json",
     "build:webapp": "vite build --config webapp/vite.config.ts",
+    "generate:icons": "node scripts/generate-icons.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json && tsc -p webapp/tsconfig.json",
     "test": "npm run test:backend && npm run test:webapp",
     "test:backend": "vitest run --config vitest.config.ts",
@@ -35,6 +36,10 @@
   ],
   "author": "Zach Hoeken <hoeken@gmail.com>",
   "license": "MIT",
+  "signalk": {
+    "displayName": "Performance Monitor",
+    "appIcon": "icon.png"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hoeken/signalk-performance-monitor.git"
@@ -69,9 +74,11 @@
     "husky": "^9.1.0",
     "jsdom": "^26.0.0",
     "lint-staged": "^15.2.0",
+    "png-to-ico": "^3.0.2",
     "prettier": "^3.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.35.3",
     "supertest": "^7.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0",

@@ -3,7 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tints the mobile browser toolbar; matches theme_color in
+         site.webmanifest and the daisyUI base-100 colour in src/App.css. -->
+    <meta name="theme-color" content="#fcfcfb" />
     <title>Performance Monitor</title>
+
+    <!-- Add-to-home-screen launch behaviour. Android/Chrome reads
+         site.webmanifest (display: standalone); iOS Safari ignores the
+         manifest, so the apple-* meta tags below are what make the
+         home-screen icon open full-screen (no Safari chrome). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Perf Monitor" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <!-- Icons generated from assets/icon.png by `npm run generate:icons`.
+         Relative hrefs because the app is served under
+         /signalk-performance-monitor/ (vite base './'). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png" />
+    <link rel="icon" href="favicons/favicon.ico" sizes="48x48" />
+    <link rel="manifest" href="site.webmanifest" />
   </head>
   <body>
     <div id="root"></div>
