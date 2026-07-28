@@ -50,9 +50,9 @@ describe('ReportView', () => {
   })
 
   it('sizes the share bar from the bucket percent', () => {
-    const { container } = render(<ReportView report={cpuReportFixture} />)
-    const bars = container.querySelectorAll('.bar')
+    render(<ReportView report={cpuReportFixture} />)
+    const bars = screen.getAllByTestId('share-bar')
     expect(bars).toHaveLength(cpuReportFixture.buckets.length)
-    expect((bars[0] as HTMLElement).style.width).toBe('61.2%')
+    expect(bars[0]!.style.width).toBe('61.2%')
   })
 })

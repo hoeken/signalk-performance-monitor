@@ -17,23 +17,27 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
         ? Math.min(1, 1 - running.remainingSeconds / running.durationSeconds)
         : 0
     return (
-      <div className="profile-controls">
-        <div className="capture-progress">
-          <span>
-            {running.type === 'heap' ? 'Heap profiling' : 'CPU profiling'}:{' '}
-            {running.remainingSeconds}s remaining
-          </span>
-          <progress value={progress} max={1} aria-label="Capture progress" />
-        </div>
+      <div className="flex w-full items-center gap-3">
+        <span className="text-sm whitespace-nowrap">
+          {running.type === 'heap' ? 'Heap profiling' : 'CPU profiling'}: {running.remainingSeconds}
+          s remaining
+        </span>
+        <progress
+          className="progress progress-primary flex-1"
+          value={progress}
+          max={1}
+          aria-label="Capture progress"
+        />
       </div>
     )
   }
 
   return (
-    <div className="profile-controls">
-      <label>
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="flex items-center gap-2 text-sm">
         Duration{' '}
         <select
+          className="select select-sm w-20"
           value={duration}
           onChange={(event) => setDuration(Number(event.target.value))}
           aria-label="Capture duration"
@@ -45,10 +49,18 @@ export function ProfileControls({ running, onStart }: ProfileControlsProps) {
           ))}
         </select>
       </label>
-      <button type="button" onClick={() => onStart('cpu', duration)}>
+      <button
+        type="button"
+        className="btn btn-sm btn-primary"
+        onClick={() => onStart('cpu', duration)}
+      >
         Profile CPU
       </button>
-      <button type="button" onClick={() => onStart('heap', duration)}>
+      <button
+        type="button"
+        className="btn btn-sm btn-primary btn-outline"
+        onClick={() => onStart('heap', duration)}
+      >
         Profile allocations
       </button>
     </div>

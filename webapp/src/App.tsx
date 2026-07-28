@@ -92,46 +92,64 @@ export function App() {
   }
 
   return (
-    <div className="app viz-root">
-      <header>
-        <h1>Performance Monitor</h1>
-        {metrics ? <span className="updated">updated {metrics.timestamp}</span> : null}
-      </header>
+    <div className="min-h-screen bg-base-200">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6">
+        <header className="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 className="text-xl font-semibold">Performance Monitor</h1>
+          {metrics ? (
+            <span className="text-xs text-base-content/60">updated {metrics.timestamp}</span>
+          ) : null}
+        </header>
 
-      {error ? (
-        <div className="banner" role="alert">
-          {error}
-        </div>
-      ) : null}
-
-      <section aria-labelledby="metrics-heading">
-        <h2 id="metrics-heading">Live metrics</h2>
-        {metrics ? (
-          <MetricsTiles metrics={metrics} />
-        ) : (
-          <p className="empty">Waiting for metrics…</p>
-        )}
-      </section>
-
-      <section aria-labelledby="profiling-heading">
-        <h2 id="profiling-heading">Profiling</h2>
-        <ProfileControls running={running} onStart={(type, d) => void handleStart(type, d)} />
-        {profiles ? (
-          <ProfileList
-            profiles={profiles.profiles}
-            selectedId={report?.id ?? null}
-            onSelect={(id) => void handleSelect(id)}
-            onDelete={(id) => void handleDelete(id)}
-          />
+        {error ? (
+          <div className="alert alert-error alert-soft" role="alert">
+            {error}
+          </div>
         ) : null}
-      </section>
 
-      {report ? (
-        <section aria-labelledby="report-heading">
-          <h2 id="report-heading">Per-plugin report</h2>
-          <ReportView report={report} />
+        <section aria-labelledby="metrics-heading" className="flex flex-col gap-2">
+          <h2 id="metrics-heading" className="text-sm font-semibold text-base-content/60">
+            Live metrics
+          </h2>
+          {metrics ? (
+            <MetricsTiles metrics={metrics} />
+          ) : (
+            <p className="text-sm text-base-content/60">Waiting for metrics…</p>
+          )}
         </section>
-      ) : null}
+
+        <section aria-labelledby="profiling-heading" className="flex flex-col gap-2">
+          <h2 id="profiling-heading" className="text-sm font-semibold text-base-content/60">
+            Profiling
+          </h2>
+          <div className="card border border-base-300 bg-base-100 shadow-sm">
+            <div className="card-body gap-4 p-5">
+              <ProfileControls running={running} onStart={(type, d) => void handleStart(type, d)} />
+              {profiles ? (
+                <ProfileList
+                  profiles={profiles.profiles}
+                  selectedId={report?.id ?? null}
+                  onSelect={(id) => void handleSelect(id)}
+                  onDelete={(id) => void handleDelete(id)}
+                />
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        {report ? (
+          <section aria-labelledby="report-heading" className="flex flex-col gap-2">
+            <h2 id="report-heading" className="text-sm font-semibold text-base-content/60">
+              Per-plugin report
+            </h2>
+            <div className="card border border-base-300 bg-base-100 shadow-sm">
+              <div className="card-body gap-3 p-5">
+                <ReportView report={report} />
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </div>
     </div>
   )
 }
