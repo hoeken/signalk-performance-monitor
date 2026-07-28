@@ -84,6 +84,29 @@ export function Documentation() {
             total RAM footprint of the server process — heap plus buffers, native code, and the
             JavaScript engine&apos;s own overhead.
           </Term>
+          <Term name="HTTP req p99 / HTTP requests">
+            How many HTTP requests the server handled per second, and how long they took (p50
+            typical, p99 near-worst, max the single slowest). Covers every request into the server —
+            REST API, admin UI, webapps — but not WebSocket traffic. All zero simply means no
+            requests arrived during the interval.
+          </Term>
+          <Term name="Disk writes / reads">
+            Storage I/O caused by the server process, counted in the kernel&apos;s 512-byte block
+            units — 2,000 writes/s is roughly 1 MB/s. Reads count only page-cache misses, i.e. data
+            actually fetched from disk, so a steady zero is normal and healthy on a warmed-up
+            server. Writes come from logging, plugin databases, and state files; a sustained jump
+            usually means a plugin started writing heavily.
+          </Term>
+          <Term name="Ctx switches (invol.)">
+            How often per second the operating system preempted the server to run something else.
+            Persistently high values mean other processes are competing for the CPU — the server is
+            slow because the machine is busy, not because of its own code.
+          </Term>
+          <Term name="Major page faults">
+            How often per second the server had to wait for memory to be read back from disk.
+            Anything persistently above zero means the system is short on RAM and swapping — expect
+            stalls that no CPU profile will explain.
+          </Term>
           <Term name="CPU profile">
             A statistical capture that samples the call stack every 1 ms by default. Time per
             function is estimated from how often it appears in the samples.

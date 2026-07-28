@@ -23,5 +23,23 @@ describe('MetricsTiles', () => {
     expect(screen.getByText('Heap used')).toBeInTheDocument()
     expect(screen.getByText('84.2 MB')).toBeInTheDocument()
     expect(screen.getByText(/RSS 149\.0 MB/)).toBeInTheDocument()
+
+    expect(screen.getByText('HTTP req p99')).toBeInTheDocument()
+    expect(screen.getByText('87.1 ms')).toBeInTheDocument()
+    expect(screen.getByText(/p50 4\.2 ms/)).toBeInTheDocument()
+    expect(screen.getByText(/max 150\.2 ms/)).toBeInTheDocument()
+
+    expect(screen.getByText('HTTP requests')).toBeInTheDocument()
+    expect(screen.getByText('3.4/s')).toBeInTheDocument()
+
+    expect(screen.getByText('Disk writes')).toBeInTheDocument()
+    expect(screen.getByText('45.2/s')).toBeInTheDocument()
+    expect(screen.getByText(/reads 12\.0\/s/)).toBeInTheDocument()
+
+    expect(screen.getByText('Ctx switches (invol.)')).toBeInTheDocument()
+    expect(screen.getByText('123.4/s')).toBeInTheDocument()
+
+    expect(screen.getByText('Major page faults')).toBeInTheDocument()
+    expect(screen.getByText('0.0/s')).toBeInTheDocument()
   })
 })

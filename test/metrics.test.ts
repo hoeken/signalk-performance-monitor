@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { createServer, get, type Server } from 'node:http'
+import { describe, expect, it, vi } from 'vitest'
 import { buildMetaDelta, buildMetricsDelta } from '../src/deltas'
 import { MetricsCollector } from '../src/metrics'
 import type { MetricsSnapshot } from '../src/shared/types'
@@ -36,9 +37,116 @@ describe('MetricsCollector', () => {
       if (snapshot.memory.rss > 0) {
         expect(snapshot.memory.rss).toBeGreaterThan(snapshot.memory.heapUsed)
       }
+      // No HTTP server ran, so the interval is request-free.
+      expect(snapshot.http.requestRate).toBe(0)
+      expect(snapshot.http.requestDuration).toEqual({ p50: 0, p99: 0, max: 0 })
+      expect(snapshot.resources.fsReadRate).toBeGreaterThanOrEqual(0)
+      expect(snapshot.resources.fsWriteRate).toBeGreaterThanOrEqual(0)
+      expect(snapshot.resources.involuntaryContextSwitchRate).toBeGreaterThanOrEqual(0)
+      expect(snapshot.resources.majorPageFaultRate).toBeGreaterThanOrEqual(0)
       expect(collector.latest()).toBe(snapshot)
     } finally {
       collector.stop()
+    }
+  })
+
+  it('times inbound http requests and resets per interval', async () => {
+    const collector = new MetricsCollector()
+    collector.start()
+    const server: Server = createServer((req, res) => {
+      setTimeout(() => res.end('ok'), 10)
+    })
+    try {
+      await new Promise<void>((resolve) => server.listen(0, resolve))
+      const address = server.address()
+      if (address === null || typeof address === 'string') throw new Error('expected a port')
+      const fetchOnce = () =>
+        new Promise<void>((resolve, reject) => {
+          get(`http://127.0.0.1:${address.port}/`, (res) => {
+            res.resume()
+            res.on('end', resolve)
+          }).on('error', reject)
+        })
+      for (let i = 0; i < 5; i++) {
+        await fetchOnce()
+      }
+      // Observer callbacks dispatch asynchronously; give them a beat to land.
+      await sleep(50)
+
+      const busy = collector.sample()
+      expect(busy.http.requestRate).toBeGreaterThan(0)
+      // The handler holds each request for 10ms, and only inbound
+      // HttpRequest entries count — outbound client timings (which include
+      // connect overhead) are excluded.
+      expect(busy.http.requestDuration.p50).toBeGreaterThan(0.005)
+      expect(busy.http.requestDuration.p99).toBeGreaterThanOrEqual(busy.http.requestDuration.p50)
+      expect(busy.http.requestDuration.max).toBeGreaterThanOrEqual(busy.http.requestDuration.p99)
+
+      // A request-free interval must not inherit the previous one.
+      await sleep(50)
+      const idle = collector.sample()
+      expect(idle.http.requestRate).toBe(0)
+      expect(idle.http.requestDuration).toEqual({ p50: 0, p99: 0, max: 0 })
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      collector.stop()
+    }
+  })
+
+  it('diffs resource usage counters into per-second rates', async () => {
+    const base: NodeJS.ResourceUsage = {
+      userCPUTime: 0,
+      systemCPUTime: 0,
+      maxRSS: 0,
+      sharedMemorySize: 0,
+      unsharedDataSize: 0,
+      unsharedStackSize: 0,
+      minorPageFault: 0,
+      majorPageFault: 400,
+      swappedOut: 0,
+      fsRead: 100,
+      fsWrite: 200,
+      ipcSent: 0,
+      ipcReceived: 0,
+      signalsCount: 0,
+      voluntaryContextSwitches: 0,
+      involuntaryContextSwitches: 300,
+    }
+    const spy = vi
+      .spyOn(process, 'resourceUsage')
+      .mockReturnValueOnce(base) // baseline taken in start()
+      .mockReturnValueOnce({
+        ...base,
+        fsRead: 150,
+        fsWrite: 300,
+        involuntaryContextSwitches: 450,
+        majorPageFault: 400,
+      })
+      .mockReturnValueOnce({ ...base, fsRead: 0, fsWrite: 0, involuntaryContextSwitches: 0 })
+    const collector = new MetricsCollector()
+    collector.start()
+    try {
+      await sleep(100)
+      const first = collector.sample()
+      // Deltas were +50 reads, +100 writes, +150 switches, +0 faults over the
+      // same wall-clock interval, so the rate ratios are exact.
+      expect(first.resources.fsReadRate).toBeGreaterThan(0)
+      expect(first.resources.fsWriteRate).toBeCloseTo(first.resources.fsReadRate * 2, 2)
+      expect(first.resources.involuntaryContextSwitchRate).toBeCloseTo(
+        first.resources.fsReadRate * 3,
+        2,
+      )
+      expect(first.resources.majorPageFaultRate).toBe(0)
+
+      await sleep(20)
+      // Counters that go backwards (they shouldn't) clamp to zero, like CPU.
+      const second = collector.sample()
+      expect(second.resources.fsReadRate).toBe(0)
+      expect(second.resources.fsWriteRate).toBe(0)
+      expect(second.resources.involuntaryContextSwitchRate).toBe(0)
+    } finally {
+      collector.stop()
+      spy.mockRestore()
     }
   })
 
@@ -79,6 +187,13 @@ describe('delta shaping', () => {
     gcPauseTime: 0.003,
     memory: { heapUsed: 51234816, rss: 98765824 },
     cpuUtilization: 0.37,
+    http: { requestRate: 3.4, requestDuration: { p50: 0.0042, p99: 0.0871, max: 0.1502 } },
+    resources: {
+      fsReadRate: 12,
+      fsWriteRate: 45.2,
+      involuntaryContextSwitchRate: 123.4,
+      majorPageFaultRate: 0.2,
+    },
   }
 
   it('publishes every metric under the performance prefix in one update', () => {
@@ -95,6 +210,14 @@ describe('delta shaping', () => {
       { path: 'performance.memory.heapUsed', value: 51234816 },
       { path: 'performance.memory.rss', value: 98765824 },
       { path: 'performance.cpu.utilization', value: 0.37 },
+      { path: 'performance.http.requestRate', value: 3.4 },
+      { path: 'performance.http.requestDuration.p50', value: 0.0042 },
+      { path: 'performance.http.requestDuration.p99', value: 0.0871 },
+      { path: 'performance.http.requestDuration.max', value: 0.1502 },
+      { path: 'performance.disk.readRate', value: 12 },
+      { path: 'performance.disk.writeRate', value: 45.2 },
+      { path: 'performance.cpu.involuntaryContextSwitchRate', value: 123.4 },
+      { path: 'performance.memory.majorPageFaultRate', value: 0.2 },
     ])
   })
 
@@ -112,6 +235,14 @@ describe('delta shaping', () => {
       'performance.memory.heapUsed': 'B',
       'performance.memory.rss': 'B',
       'performance.cpu.utilization': 'ratio',
+      'performance.http.requestRate': 'Hz',
+      'performance.http.requestDuration.p50': 's',
+      'performance.http.requestDuration.p99': 's',
+      'performance.http.requestDuration.max': 's',
+      'performance.disk.readRate': 'Hz',
+      'performance.disk.writeRate': 'Hz',
+      'performance.cpu.involuntaryContextSwitchRate': 'Hz',
+      'performance.memory.majorPageFaultRate': 'Hz',
     })
   })
 })

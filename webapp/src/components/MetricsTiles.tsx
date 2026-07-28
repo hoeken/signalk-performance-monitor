@@ -1,5 +1,5 @@
 import type { MetricsSnapshot } from '../../../src/shared/types'
-import { formatBytes, formatMs, formatPercent } from '../format'
+import { formatBytes, formatMs, formatPercent, formatRate } from '../format'
 
 interface TileProps {
   label: string
@@ -44,6 +44,25 @@ export function MetricsTiles({ metrics }: { metrics: MetricsSnapshot }) {
         value={formatBytes(metrics.memory.heapUsed)}
         details={[`RSS ${formatBytes(metrics.memory.rss)}`]}
       />
+      <Tile
+        label="HTTP req p99"
+        value={formatMs(metrics.http.requestDuration.p99)}
+        details={[
+          `p50 ${formatMs(metrics.http.requestDuration.p50)}`,
+          `max ${formatMs(metrics.http.requestDuration.max)}`,
+        ]}
+      />
+      <Tile label="HTTP requests" value={formatRate(metrics.http.requestRate)} />
+      <Tile
+        label="Disk writes"
+        value={formatRate(metrics.resources.fsWriteRate)}
+        details={[`reads ${formatRate(metrics.resources.fsReadRate)}`]}
+      />
+      <Tile
+        label="Ctx switches (invol.)"
+        value={formatRate(metrics.resources.involuntaryContextSwitchRate)}
+      />
+      <Tile label="Major page faults" value={formatRate(metrics.resources.majorPageFaultRate)} />
     </div>
   )
 }

@@ -13,6 +13,13 @@ export const metricsFixture: MetricsSnapshot = {
   gcPauseTime: 0.0031,
   memory: { heapUsed: 88_300_544, rss: 156_237_824 },
   cpuUtilization: 0.37,
+  http: { requestRate: 3.4, requestDuration: { p50: 0.0042, p99: 0.0871, max: 0.1502 } },
+  resources: {
+    fsReadRate: 12,
+    fsWriteRate: 45.2,
+    involuntaryContextSwitchRate: 123.4,
+    majorPageFaultRate: 0,
+  },
 }
 
 export const cpuReportFixture: CpuReport = {

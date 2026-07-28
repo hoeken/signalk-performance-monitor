@@ -9,6 +9,10 @@ export function formatPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(1)}%`
 }
 
+export function formatRate(perSecond: number): string {
+  return `${perSecond.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/s`
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`

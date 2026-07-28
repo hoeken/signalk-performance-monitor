@@ -17,6 +17,14 @@ interface MetricPaths {
   memoryHeapUsed: Path
   memoryRss: Path
   cpuUtilization: Path
+  httpRequestRate: Path
+  httpRequestDurationP50: Path
+  httpRequestDurationP99: Path
+  httpRequestDurationMax: Path
+  diskReadRate: Path
+  diskWriteRate: Path
+  involuntaryContextSwitchRate: Path
+  majorPageFaultRate: Path
 }
 
 /** All metrics publish under the fixed `performance.` prefix. */
@@ -29,6 +37,14 @@ const paths: MetricPaths = {
   memoryHeapUsed: 'performance.memory.heapUsed' as Path,
   memoryRss: 'performance.memory.rss' as Path,
   cpuUtilization: 'performance.cpu.utilization' as Path,
+  httpRequestRate: 'performance.http.requestRate' as Path,
+  httpRequestDurationP50: 'performance.http.requestDuration.p50' as Path,
+  httpRequestDurationP99: 'performance.http.requestDuration.p99' as Path,
+  httpRequestDurationMax: 'performance.http.requestDuration.max' as Path,
+  diskReadRate: 'performance.disk.readRate' as Path,
+  diskWriteRate: 'performance.disk.writeRate' as Path,
+  involuntaryContextSwitchRate: 'performance.cpu.involuntaryContextSwitchRate' as Path,
+  majorPageFaultRate: 'performance.memory.majorPageFaultRate' as Path,
 }
 
 export function buildMetricsDelta(snapshot: MetricsSnapshot): Delta {
@@ -44,6 +60,17 @@ export function buildMetricsDelta(snapshot: MetricsSnapshot): Delta {
           { path: paths.memoryHeapUsed, value: snapshot.memory.heapUsed },
           { path: paths.memoryRss, value: snapshot.memory.rss },
           { path: paths.cpuUtilization, value: snapshot.cpuUtilization },
+          { path: paths.httpRequestRate, value: snapshot.http.requestRate },
+          { path: paths.httpRequestDurationP50, value: snapshot.http.requestDuration.p50 },
+          { path: paths.httpRequestDurationP99, value: snapshot.http.requestDuration.p99 },
+          { path: paths.httpRequestDurationMax, value: snapshot.http.requestDuration.max },
+          { path: paths.diskReadRate, value: snapshot.resources.fsReadRate },
+          { path: paths.diskWriteRate, value: snapshot.resources.fsWriteRate },
+          {
+            path: paths.involuntaryContextSwitchRate,
+            value: snapshot.resources.involuntaryContextSwitchRate,
+          },
+          { path: paths.majorPageFaultRate, value: snapshot.resources.majorPageFaultRate },
         ],
       },
     ],
@@ -98,6 +125,69 @@ export function buildMetaDelta(): Delta {
             value: {
               units: 'ratio',
               description: 'Process CPU time / wall time over the last interval',
+            },
+          },
+          {
+            path: paths.httpRequestRate,
+            value: {
+              units: 'Hz',
+              description: 'Inbound HTTP requests handled per second over the last interval',
+            },
+          },
+          {
+            path: paths.httpRequestDurationP50,
+            value: {
+              units: 's',
+              description:
+                'Median HTTP request duration over the last interval (0 when no requests)',
+            },
+          },
+          {
+            path: paths.httpRequestDurationP99,
+            value: {
+              units: 's',
+              description:
+                '99th percentile HTTP request duration over the last interval (0 when no requests)',
+            },
+          },
+          {
+            path: paths.httpRequestDurationMax,
+            value: {
+              units: 's',
+              description:
+                'Maximum HTTP request duration over the last interval (0 when no requests)',
+            },
+          },
+          {
+            path: paths.diskReadRate,
+            value: {
+              units: 'Hz',
+              description:
+                '512-byte blocks read from storage per second by the server process — page-cache misses only, so a steady 0 is normal',
+            },
+          },
+          {
+            path: paths.diskWriteRate,
+            value: {
+              units: 'Hz',
+              description:
+                '512-byte blocks written to storage per second by the server process (2000/s ≈ 1 MB/s)',
+            },
+          },
+          {
+            path: paths.involuntaryContextSwitchRate,
+            value: {
+              units: 'Hz',
+              description:
+                'Involuntary context switches per second — the OS preempting the server, a CPU contention indicator',
+            },
+          },
+          {
+            path: paths.majorPageFaultRate,
+            value: {
+              units: 'Hz',
+              description:
+                'Major page faults per second — memory served from disk, a memory pressure indicator',
             },
           },
         ],

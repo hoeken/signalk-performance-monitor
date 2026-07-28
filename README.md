@@ -14,8 +14,10 @@ modifications, no changes to other plugins.**
 
 - **Continuous metrics** published as Signal K deltas every 5 s (configurable):
   event-loop delay p50/p99/max, event-loop utilization, GC pause time, heap/RSS,
-  process CPU utilization. Works out of the box with the data browser,
-  `signalk-to-influxdb`/Grafana, and alerting plugins.
+  process CPU utilization, HTTP request rate and duration percentiles, disk I/O
+  operation rates, involuntary context switches, and major page faults. Works out
+  of the box with the data browser, `signalk-to-influxdb`/Grafana, and alerting
+  plugins.
 - **On-demand CPU profiling** of the live server via a self-connected inspector session.
   The V8 sampling profiler runs off-thread: a few percent overhead _only while capturing_,
   zero otherwise. No debug port is opened.
@@ -45,13 +47,21 @@ server ≥ 2.x.
 
 ## Signal K paths
 
-| Path                                               | Unit             |
-| -------------------------------------------------- | ---------------- |
-| `performance.eventLoopDelay.p50` / `.p99` / `.max` | s                |
-| `performance.eventLoopUtilization`                 | ratio 0–1        |
-| `performance.gc.pauseTime`                         | s (per interval) |
-| `performance.memory.heapUsed` / `.rss`             | bytes            |
-| `performance.cpu.utilization`                      | ratio            |
+| Path                                                     | Unit                |
+| -------------------------------------------------------- | ------------------- |
+| `performance.eventLoopDelay.p50` / `.p99` / `.max`       | s                   |
+| `performance.eventLoopUtilization`                       | ratio 0–1           |
+| `performance.gc.pauseTime`                               | s (per interval)    |
+| `performance.memory.heapUsed` / `.rss`                   | bytes               |
+| `performance.cpu.utilization`                            | ratio               |
+| `performance.http.requestRate`                           | Hz (requests/s)     |
+| `performance.http.requestDuration.p50` / `.p99` / `.max` | s                   |
+| `performance.disk.readRate` / `.writeRate`               | Hz (512 B blocks/s) |
+| `performance.cpu.involuntaryContextSwitchRate`           | Hz                  |
+| `performance.memory.majorPageFaultRate`                  | Hz                  |
+
+Disk I/O is counted in the kernel's 512-byte block units (2000 writes/s ≈ 1 MB/s), and
+reads count only page-cache misses — a steady 0 is normal on a warmed-up server.
 
 Delta publishing can be disabled entirely, leaving webapp/HTTP-only access.
 

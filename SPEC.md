@@ -37,20 +37,30 @@ Signal K server runs all JavaScript — delta processing, WebSocket fanout, REST
 
 On plugin start, `MetricsCollector` (`src/metrics.ts`) begins collecting and takes a baseline sample so `GET /metrics` answers immediately. Every `publishIntervalSeconds` (default 5) it samples and — when `publishDeltas` is on — emits one delta via `app.handleMessage`. All sources are diffed or reset per interval; values are rounded to 6 decimals.
 
-| Path                               | Source                                                             | Unit        |
-| ---------------------------------- | ------------------------------------------------------------------ | ----------- |
-| `performance.eventLoopDelay.p50`   | `monitorEventLoopDelay()` percentile (histogram reset each sample) | s           |
-| `performance.eventLoopDelay.p99`   | 〃                                                                 | s           |
-| `performance.eventLoopDelay.max`   | 〃                                                                 | s           |
-| `performance.eventLoopUtilization` | `performance.eventLoopUtilization()` diffed per interval           | ratio (0–1) |
-| `performance.gc.pauseTime`         | `PerformanceObserver` on `'gc'`, summed per interval               | s           |
-| `performance.memory.heapUsed`      | `process.memoryUsage()`                                            | bytes       |
-| `performance.memory.rss`           | 〃                                                                 | bytes       |
-| `performance.cpu.utilization`      | `process.cpuUsage()` (user + system) diffed against wall time      | ratio       |
+| Path                                           | Source                                                             | Unit        |
+| ---------------------------------------------- | ------------------------------------------------------------------ | ----------- |
+| `performance.eventLoopDelay.p50`               | `monitorEventLoopDelay()` percentile (histogram reset each sample) | s           |
+| `performance.eventLoopDelay.p99`               | 〃                                                                 | s           |
+| `performance.eventLoopDelay.max`               | 〃                                                                 | s           |
+| `performance.eventLoopUtilization`             | `performance.eventLoopUtilization()` diffed per interval           | ratio (0–1) |
+| `performance.gc.pauseTime`                     | `PerformanceObserver` on `'gc'`, summed per interval               | s           |
+| `performance.memory.heapUsed`                  | `process.memoryUsage()`                                            | bytes       |
+| `performance.memory.rss`                       | 〃                                                                 | bytes       |
+| `performance.cpu.utilization`                  | `process.cpuUsage()` (user + system) diffed against wall time      | ratio       |
+| `performance.http.requestRate`                 | `PerformanceObserver` on `'http'`, count per interval              | Hz          |
+| `performance.http.requestDuration.p50`         | 〃 durations into a `createHistogram()`, reset each sample         | s           |
+| `performance.http.requestDuration.p99`         | 〃                                                                 | s           |
+| `performance.http.requestDuration.max`         | 〃                                                                 | s           |
+| `performance.disk.readRate`                    | `process.resourceUsage().fsRead` diffed per interval               | Hz          |
+| `performance.disk.writeRate`                   | `process.resourceUsage().fsWrite` diffed per interval              | Hz          |
+| `performance.cpu.involuntaryContextSwitchRate` | `process.resourceUsage().involuntaryContextSwitches` diffed        | Hz          |
+| `performance.memory.majorPageFaultRate`        | `process.resourceUsage().majorPageFault` diffed                    | Hz          |
 
 Notes:
 
 - All units SI per Signal K convention; a `meta` delta with units and descriptions is emitted once at plugin start (`buildMetaDelta` in `src/deltas.ts`).
+- HTTP timing counts only inbound `HttpRequest` entries (outbound `HttpClient` entries are filtered out) and covers every request handled anywhere in the process — REST, admin UI, webapps — but not WebSocket traffic. Node emits `'http'` performance entries only while an observer is subscribed, so the per-request cost exists only while the plugin runs. Durations report as all zeros in a request-free interval.
+- `process.resourceUsage()` counters are monotonic; each is diffed per interval and divided by wall time into a rate (clamped at 0, like CPU). `fsRead`/`fsWrite` count 512-byte blocks transferred to/from storage (Linux `ru_inblock`/`ru_oublock`), not bytes or syscalls — so 2000 writes/s ≈ 1 MB/s. Reads count only page-cache misses; a warmed-up server reads everything from cache, so a steady 0 is the normal, healthy state.
 - All metrics publish under the fixed `performance.` path prefix; publishing can be disabled entirely, leaving webapp-only access via the `GET /metrics` route.
 - Publishing as deltas is the integration hook: data browser, `signalk-to-influxdb`/Grafana, and alerting plugins all work with zero additional code.
 - Respects the server's hot-path rules: metric paths are precomputed once at module load; each publish builds a single object literal (`buildMetricsDelta`).
@@ -157,7 +167,7 @@ Defined in `src/plugin.ts` with titles, descriptions, and minimums; defaults:
 React single-page app (`webapp/`), built with Vite into static assets under `public/` (auto-mounted at `/signalk-performance-monitor` via the `signalk-webapp` keyword):
 
 - **Stack:** React 18, TypeScript, Vite. Runtime dependencies are React + ReactDOM only (bundled at build time — nothing beyond `dist/` + `public/` ships in the package); no charting library, no heavyweight UI frameworks.
-- **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU — polled from `GET /metrics` every 2s.
+- **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU, HTTP request rate + duration p50/p99/max, disk read/write op rates, involuntary context switches, major page faults — polled from `GET /metrics` every 2s.
 - **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU" and "Profile allocations" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
 - **Profile list** (`ProfileList`) — stored captures with select, raw download, and delete.
 - **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket.

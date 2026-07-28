@@ -20,6 +20,30 @@ export interface MemoryMetrics {
   rss: number
 }
 
+export interface HttpMetrics {
+  /** inbound HTTP requests handled per second over the last interval */
+  requestRate: number
+  /** request duration percentiles in seconds; all zero when no requests were handled */
+  requestDuration: {
+    p50: number
+    p99: number
+    /** seconds, reset each publish interval */
+    max: number
+  }
+}
+
+/** Per-second rates diffed from `process.resourceUsage()` over the last interval. */
+export interface ResourceUsageMetrics {
+  /** 512-byte blocks read from storage per second (page-cache misses only, so usually 0) */
+  fsReadRate: number
+  /** 512-byte blocks written to storage per second */
+  fsWriteRate: number
+  /** involuntary context switches per second — a CPU contention indicator */
+  involuntaryContextSwitchRate: number
+  /** major page faults per second — a memory pressure indicator */
+  majorPageFaultRate: number
+}
+
 export interface MetricsSnapshot {
   timestamp: string
   eventLoopDelay: EventLoopDelayMetrics
@@ -30,6 +54,8 @@ export interface MetricsSnapshot {
   memory: MemoryMetrics
   /** ratio of process CPU time to wall time over the last interval */
   cpuUtilization: number
+  http: HttpMetrics
+  resources: ResourceUsageMetrics
 }
 
 export type ProfileType = 'cpu' | 'heap'

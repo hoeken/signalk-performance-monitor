@@ -26,6 +26,13 @@ const SNAPSHOT: MetricsSnapshot = {
   gcPauseTime: 0.001,
   memory: { heapUsed: 1000, rss: 2000 },
   cpuUtilization: 0.25,
+  http: { requestRate: 2, requestDuration: { p50: 0.004, p99: 0.05, max: 0.12 } },
+  resources: {
+    fsReadRate: 10,
+    fsWriteRate: 20,
+    involuntaryContextSwitchRate: 30,
+    majorPageFaultRate: 0,
+  },
 }
 
 class FakeCaptures implements CaptureController {
