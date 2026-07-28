@@ -29,3 +29,8 @@ export function formatDateTime(iso: string): string {
 export function formatDuration(ms: number): string {
   return ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms)} ms`
 }
+
+/** Request durations arrive in milliseconds and are often sub-millisecond. */
+export function formatMillis(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`
+}

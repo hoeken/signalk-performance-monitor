@@ -7,6 +7,7 @@ import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { CaptureManager } from './capture'
 import { buildMetaDelta, buildMetricsDelta } from './deltas'
+import { HttpRequestTracker } from './http-requests'
 import { MetricsCollector } from './metrics'
 import { registerRoutes, type RouteDeps } from './routes'
 import { ProfileStore } from './store'
@@ -110,6 +111,7 @@ export function detectServerRoot(startFile?: string): string | undefined {
 export function createPlugin(app: ServerAPI): Plugin {
   let config = CONFIG_DEFAULTS
   let collector: MetricsCollector | null = null
+  let httpRequests: HttpRequestTracker | null = null
   let captures: CaptureManager | null = null
   let deps: RouteDeps | null = null
   let publishTimer: NodeJS.Timeout | null = null
@@ -171,6 +173,9 @@ export function createPlugin(app: ServerAPI): Plugin {
       collector.start()
       collector.sample() // establish a baseline so GET /metrics answers immediately
 
+      httpRequests = new HttpRequestTracker()
+      httpRequests.start()
+
       const store = new ProfileStore(app.getDataDirPath(), config.maxStoredProfiles)
       captures = new CaptureManager({
         store,
@@ -181,6 +186,7 @@ export function createPlugin(app: ServerAPI): Plugin {
 
       deps = {
         metrics: collector,
+        httpRequests,
         captures,
         store,
         options: {
@@ -214,6 +220,8 @@ export function createPlugin(app: ServerAPI): Plugin {
       abortable?.abort().catch((error) => app.error(`capture abort failed: ${String(error)}`))
       collector?.stop()
       collector = null
+      httpRequests?.stop()
+      httpRequests = null
       app.setPluginStatus('Stopped')
       app.debug('stopped')
     },

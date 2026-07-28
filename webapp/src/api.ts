@@ -1,4 +1,5 @@
 import type {
+  HttpRequestsResponse,
   MetricsSnapshot,
   ProfileListResponse,
   ProfileReport,
@@ -41,6 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const getMetrics = () => request<MetricsSnapshot>('/metrics')
+
+export const getHttpRequests = () => request<HttpRequestsResponse>('/http-requests')
 
 export const getProfiles = () => request<ProfileListResponse>('/profile')
 

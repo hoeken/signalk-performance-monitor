@@ -66,6 +66,15 @@ Notes:
 - Respects the server's hot-path rules: metric paths are precomputed once at module load; each publish builds a single object literal (`buildMetricsDelta`).
 - The same snapshot (shape: `MetricsSnapshot` in `src/shared/types.ts`, with an ISO `timestamp`) is served by `GET /metrics` and consumed by the webapp.
 
+### Per-request tracking
+
+`HttpRequestTracker` (`src/http-requests.ts`) subscribes a second observer to the same `'http'` entries and keeps, in memory only (reset on plugin restart):
+
+- a ring buffer of the last 100 requests — ISO end timestamp, method, path _with_ query string, status code, duration (ms), and response `Content-Length` when the response declared one (streamed/chunked responses don't);
+- cumulative per-`method + path` aggregates with query strings stripped — request count, total/max duration (average is derived client-side), error count (status ≥ 400), summed response bytes, and last-seen timestamp. The map is capped at 500 distinct keys; once full, new paths accumulate under a single `(other)` row so unbounded URL spaces (ids in paths, scanners) can't grow memory.
+
+Both are served by `GET /http-requests` (shape: `HttpRequestsResponse` in `src/shared/types.ts`, recent entries newest-first).
+
 ## Feature 2: On-demand CPU profiling
 
 - `POST /profile` with `{ duration?: seconds, samplingIntervalUs?: number }` starts a capture using a self-connected `inspector.Session` (`Profiler.enable` → `setSamplingInterval` → `start` → wait → `stop`). Managed by `CaptureManager` (`src/capture.ts`).
@@ -132,6 +141,7 @@ All routes registered via `registerWithRouter` directly on the router (`src/rout
 | Method | Route                 | Description                                                                                                             |
 | ------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/metrics`            | Latest metrics snapshot (JSON)                                                                                          |
+| GET    | `/http-requests`      | Last 100 requests (newest first) + cumulative per-path aggregates                                                       |
 | POST   | `/profile`            | Start CPU capture; returns `{ id }`; 409 if any capture is running; 400 on invalid duration/interval                    |
 | GET    | `/profile`            | `{ running, profiles }` — status of any in-flight capture (with `remainingSeconds`) + stored list (with `rawSizeBytes`) |
 | GET    | `/profile/:id/report` | Aggregated per-plugin report (CPU or heap); 404 if unknown                                                              |
@@ -166,10 +176,11 @@ Defined in `src/plugin.ts` with titles, descriptions, and minimums; defaults:
 
 React single-page app (`webapp/`), built with Vite into static assets under `public/` (auto-mounted at `/signalk-performance-monitor` via the `signalk-webapp` keyword):
 
-- **Stack:** React 18, TypeScript, Vite. Runtime dependencies are React + ReactDOM only (bundled at build time — nothing beyond `dist/` + `public/` ships in the package); no charting library, no heavyweight UI frameworks.
+- **Stack:** React 18, TypeScript, Vite. Runtime dependencies are React + ReactDOM plus the headless TanStack table core for the request tables (all bundled at build time — nothing beyond `dist/` + `public/` ships in the package); no charting library, no heavyweight UI frameworks.
 - **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU, HTTP request rate + duration p50/p99/max, disk read/write op rates, involuntary context switches, major page faults — polled from `GET /metrics` every 2s.
 - **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU" and "Profile allocations" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
 - **Profile list** (`ProfileList`) — stored captures with select, raw download, and delete.
+- **HTTP requests** (`HttpRequests`) — tabbed card in its own section below Profiling, polled from `GET /http-requests` every 5s: the last 100 requests and the per-path aggregates as sortable (click a header), searchable tables via the headless `@tanstack/react-table`, styled like every other table. A default-on "Hide this plugin" toggle filters out the webapp's own polling, which would otherwise dominate the latest-requests view.
 - **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket.
 - **Flame graph** (`FlameGraph`) — in-browser icicle flame graph for both report types, built from the report's `flame` tree with no charting library. Click a frame to zoom (ancestors stay as dimmed full-width context), hover or keyboard-focus for a tooltip (value, % of view / % of capture, function, bucket, url), legend above the graph. Frames are colored by attribution bucket: four hues validated for arbitrary adjacency on the app's light surface (signalk core pinned to blue, top packages get orange/aqua/violet), everything else in neutral grays. Frame names render inline only when they measurably fit; identity never relies on color alone (labels, tooltip, and the bucket table below).
 - API client (`webapp/src/api.ts`) maps 401/403 to an "Admin login required" banner; shared types are imported directly from `src/shared/types.ts` so the API contract is compile-time checked.

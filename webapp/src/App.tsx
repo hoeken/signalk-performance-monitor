@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
+  HttpRequestsResponse,
   MetricsSnapshot,
   ProfileListResponse,
   ProfileReport,
@@ -8,6 +9,7 @@ import type {
 import {
   ApiError,
   deleteProfile,
+  getHttpRequests,
   getMetrics,
   getProfiles,
   getReport,
@@ -16,6 +18,7 @@ import {
 } from './api'
 import { formatDateTime } from './format'
 import { Documentation } from './components/Documentation'
+import { HttpRequests } from './components/HttpRequests'
 import { MetricsTiles } from './components/MetricsTiles'
 import { ProfileControls } from './components/ProfileControls'
 import { ProfileList } from './components/ProfileList'
@@ -25,9 +28,11 @@ import { ThemeToggle } from './components/ThemeToggle'
 const METRICS_POLL_MS = 2000
 const PROFILES_POLL_MS = 5000
 const RUNNING_POLL_MS = 1000
+const HTTP_REQUESTS_POLL_MS = 5000
 
 export function App() {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null)
+  const [httpRequests, setHttpRequests] = useState<HttpRequestsResponse | null>(null)
   const [profiles, setProfiles] = useState<ProfileListResponse | null>(null)
   const [report, setReport] = useState<ProfileReport | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +62,24 @@ export function App() {
     }
     void poll()
     const timer = setInterval(poll, METRICS_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const data = await getHttpRequests()
+        if (!cancelled) setHttpRequests(data)
+      } catch {
+        // transient; the metrics poll surfaces auth errors
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), HTTP_REQUESTS_POLL_MS)
     return () => {
       cancelled = true
       clearInterval(timer)
@@ -184,6 +207,13 @@ export function App() {
             </div>
           </section>
         ) : null}
+
+        <section aria-labelledby="http-requests-heading" className="flex flex-col gap-2">
+          <h2 id="http-requests-heading" className="text-sm font-semibold text-base-content/60">
+            HTTP Requests
+          </h2>
+          <HttpRequests data={httpRequests} />
+        </section>
 
         <section aria-labelledby="documentation-heading" className="flex flex-col gap-2">
           <h2 id="documentation-heading" className="text-sm font-semibold text-base-content/60">

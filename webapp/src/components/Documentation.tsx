@@ -45,7 +45,7 @@ export function Documentation() {
         </p>
         <p>
           Finished captures appear in the list. <strong>Report</strong> opens the per-plugin
-          breakdown and flame graph (click again to close), <strong>JSON</strong> downloads the raw
+          breakdown and flame graph (click again to close), <strong>Download</strong> saves the raw
           profile as <code>.json</code> for Chrome DevTools or{' '}
           <a className="link" href="https://www.speedscope.app/" target="_blank" rel="noreferrer">
             speedscope
@@ -89,6 +89,16 @@ export function Documentation() {
             typical, p99 near-worst, max the single slowest). Covers every request into the server —
             REST API, admin UI, webapps — but not WebSocket traffic. All zero simply means no
             requests arrived during the interval.
+          </Term>
+          <Term name="HTTP Requests (Latest / Aggregate)">
+            The Latest tab lists the last 100 requests the server handled — any client, not just
+            this webapp — with query strings intact. The Aggregate tab totals every request per path
+            (query strings stripped) since the plugin started; its Duration and Size columns are
+            per-request averages. Size is the response&apos;s declared <code>Content-Length</code>;
+            streamed responses don&apos;t declare one and show a dash. Durations are color-coded:
+            green under 25 ms, blue to 50 ms, orange to 100 ms, orange-red to 200 ms, and red
+            beyond. Click a column header to sort, and use the search box to filter. WebSocket
+            traffic is not included.
           </Term>
           <Term name="Disk writes / reads">
             Storage I/O caused by the server process, counted in the kernel&apos;s 512-byte block
@@ -169,7 +179,7 @@ export function Documentation() {
 
       <Panel title="Opening a profile in another app">
         <p>
-          The <strong>JSON</strong> download is a standard V8 profile — CPU captures use
+          The <strong>Download</strong> button saves a standard V8 profile — CPU captures use
           Chrome&apos;s <code>.cpuprofile</code> format, memory captures the{' '}
           <code>.heapprofile</code> format — so any tool that reads Chrome profiler output can open
           it. The one extra <code>signalk-performance-monitor</code> key holds capture metadata;

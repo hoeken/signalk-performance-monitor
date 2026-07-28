@@ -19,6 +19,7 @@ import {
 } from './capture'
 import { isValidProfileId } from './store'
 import type {
+  HttpRequestsResponse,
   MetricsSnapshot,
   ProfileListEntry,
   ProfileReport,
@@ -56,6 +57,7 @@ export interface RouteOptions {
 
 export interface RouteDeps {
   metrics: { latest(): MetricsSnapshot | null }
+  httpRequests: { snapshot(): HttpRequestsResponse }
   captures: CaptureController
   store: ProfileReader
   options: RouteOptions
@@ -97,6 +99,13 @@ export function registerRoutes(
         return
       }
       res.json(snapshot)
+    }),
+  )
+
+  router.get(
+    '/http-requests',
+    wrap((deps, _req, res) => {
+      res.json(deps.httpRequests.snapshot())
     }),
   )
 

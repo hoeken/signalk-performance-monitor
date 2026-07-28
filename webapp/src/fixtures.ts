@@ -2,6 +2,7 @@
 import type {
   CpuReport,
   HeapReport,
+  HttpRequestsResponse,
   MetricsSnapshot,
   ProfileListResponse,
 } from '../../src/shared/types'
@@ -20,6 +21,66 @@ export const metricsFixture: MetricsSnapshot = {
     involuntaryContextSwitchRate: 123.4,
     majorPageFaultRate: 0,
   },
+}
+
+export const httpRequestsFixture: HttpRequestsResponse = {
+  recent: [
+    {
+      timestamp: '2026-07-28T10:15:29.500Z',
+      method: 'GET',
+      path: '/signalk/v1/api/vessels/self?depth=1',
+      statusCode: 200,
+      durationMs: 4.2,
+      responseBytes: 1832,
+    },
+    {
+      timestamp: '2026-07-28T10:15:28.000Z',
+      method: 'PUT',
+      path: '/signalk/v1/api/vessels/self/steering/autopilot',
+      statusCode: 405,
+      durationMs: 1.1,
+    },
+    {
+      timestamp: '2026-07-28T10:15:27.000Z',
+      method: 'GET',
+      path: '/plugins/signalk-performance-monitor/metrics',
+      statusCode: 200,
+      durationMs: 0.9,
+      responseBytes: 512,
+    },
+  ],
+  aggregate: [
+    {
+      method: 'GET',
+      path: '/signalk/v1/api/vessels/self',
+      count: 240,
+      totalMs: 1008,
+      maxMs: 22.5,
+      errorCount: 0,
+      totalBytes: 439_680,
+      lastSeen: '2026-07-28T10:15:29.500Z',
+    },
+    {
+      method: 'PUT',
+      path: '/signalk/v1/api/vessels/self/steering/autopilot',
+      count: 3,
+      totalMs: 3.3,
+      maxMs: 1.2,
+      errorCount: 3,
+      totalBytes: 0,
+      lastSeen: '2026-07-28T10:15:28.000Z',
+    },
+    {
+      method: 'GET',
+      path: '/plugins/signalk-performance-monitor/metrics',
+      count: 500,
+      totalMs: 450,
+      maxMs: 9.1,
+      errorCount: 0,
+      totalBytes: 256_000,
+      lastSeen: '2026-07-28T10:15:27.000Z',
+    },
+  ],
 }
 
 export const cpuReportFixture: CpuReport = {

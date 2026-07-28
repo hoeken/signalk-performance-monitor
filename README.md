@@ -27,6 +27,9 @@ modifications, no changes to other plugins.**
 - **Allocation profiling** (sampling heap profiler) with the same per-plugin bucketing:
   see which plugin allocates most. Full heap snapshots are deliberately not exposed
   (unsafe on memory-constrained hardware).
+- **HTTP request tracking**: the last 100 requests (method, path with query string,
+  status, duration, response size) plus cumulative per-path aggregates (request count,
+  average/max/total duration, errors, bytes) — sortable, searchable tables in the webapp.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
   per-plugin table with share bars and expandable top functions, raw profile JSON
@@ -74,6 +77,7 @@ function names. Base: `/plugins/signalk-performance-monitor`.
 | Method | Route                 | Description                                                                              |
 | ------ | --------------------- | ---------------------------------------------------------------------------------------- |
 | GET    | `/metrics`            | Current metrics snapshot (JSON)                                                          |
+| GET    | `/http-requests`      | Last 100 requests + cumulative per-path aggregates                                       |
 | POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running |
 | POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`              |
 | GET    | `/profile`            | Stored profiles + status of any running capture                                          |

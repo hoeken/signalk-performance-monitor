@@ -32,6 +32,43 @@ export interface HttpMetrics {
   }
 }
 
+/** One completed inbound HTTP request, newest first in `HttpRequestsResponse.recent`. */
+export interface RecentHttpRequest {
+  /** ISO time the response finished */
+  timestamp: string
+  method: string
+  /** request path including the query string */
+  path: string
+  statusCode: number
+  /** milliseconds */
+  durationMs: number
+  /** response Content-Length; absent for chunked/streamed responses */
+  responseBytes?: number
+}
+
+/** Cumulative per-path stats since plugin start; query strings are stripped. */
+export interface HttpPathStats {
+  method: string
+  /** path with the query string stripped; "(other)" collects overflow paths */
+  path: string
+  count: number
+  /** milliseconds, summed across all requests */
+  totalMs: number
+  /** milliseconds, slowest single request */
+  maxMs: number
+  /** responses with status >= 400 */
+  errorCount: number
+  /** summed response Content-Length across responses that declared one */
+  totalBytes: number
+  /** ISO time of the most recent request */
+  lastSeen: string
+}
+
+export interface HttpRequestsResponse {
+  recent: RecentHttpRequest[]
+  aggregate: HttpPathStats[]
+}
+
 /** Per-second rates diffed from `process.resourceUsage()` over the last interval. */
 export interface ResourceUsageMetrics {
   /** 512-byte blocks read from storage per second (page-cache misses only, so usually 0) */

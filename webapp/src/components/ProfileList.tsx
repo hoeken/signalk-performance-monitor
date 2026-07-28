@@ -52,7 +52,7 @@ export function ProfileList({ profiles, selectedId, onSelect, onDelete }: Profil
                     href={rawProfileUrl(profile.id)}
                     download
                   >
-                    JSON
+                    Download
                   </a>
                   <button
                     type="button"

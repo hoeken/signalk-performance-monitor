@@ -70,7 +70,7 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
         className="btn btn-sm btn-success btn-outline"
         onClick={() => fileInput.current?.click()}
       >
-        Upload
+        Upload Profile
       </button>
       <input
         ref={fileInput}

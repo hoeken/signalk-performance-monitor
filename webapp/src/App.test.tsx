@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProfileListResponse } from '../../src/shared/types'
 import { App } from './App'
-import { cpuReportFixture, metricsFixture, profileListFixture } from './fixtures'
+import {
+  cpuReportFixture,
+  httpRequestsFixture,
+  metricsFixture,
+  profileListFixture,
+} from './fixtures'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -22,6 +27,7 @@ describe('App', () => {
       const url = String(input)
       const method = init?.method ?? 'GET'
       if (url.endsWith('/metrics')) return Promise.resolve(jsonResponse(metricsFixture))
+      if (url.endsWith('/http-requests')) return Promise.resolve(jsonResponse(httpRequestsFixture))
       if (url.includes('/profile/upload') && method === 'POST') {
         return Promise.resolve(jsonResponse({ id: 'cpu-uploaded' }))
       }
@@ -59,6 +65,14 @@ describe('App', () => {
     expect(await screen.findByText('Memory', { selector: 'td' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Documentation' })).toBeInTheDocument()
+  })
+
+  it('shows the HTTP requests section', async () => {
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'HTTP Requests' })).toBeInTheDocument()
+    expect(await screen.findByText('/signalk/v1/api/vessels/self?depth=1')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Aggregate' })).toBeInTheDocument()
   })
 
   it('starts a CPU capture and switches to progress display', async () => {
@@ -109,7 +123,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    expect(await screen.findByRole('button', { name: 'Upload' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Upload Profile' })).toBeInTheDocument()
     const file = new File(
       [JSON.stringify({ nodes: [], startTime: 0, endTime: 1 })],
       'cpu-2026-07-28T10-00-00-000Z.json',
@@ -132,7 +146,7 @@ describe('App', () => {
 
   it('links raw downloads to the raw profile route', async () => {
     render(<App />)
-    const rawLinks = await screen.findAllByRole('link', { name: 'JSON' })
+    const rawLinks = await screen.findAllByRole('link', { name: 'Download' })
     expect(rawLinks[0]).toHaveAttribute(
       'href',
       '/plugins/signalk-performance-monitor/profile/cpu-2026-07-28T10-00-00-000Z/raw',

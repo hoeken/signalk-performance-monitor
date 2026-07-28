@@ -17,7 +17,12 @@ import {
 } from '../src/capture'
 import { registerRoutes, type CaptureController, type RouteDeps } from '../src/routes'
 import { ProfileStore } from '../src/store'
-import type { CpuReport, MetricsSnapshot, RunningCapture } from '../src/shared/types'
+import type {
+  CpuReport,
+  HttpRequestsResponse,
+  MetricsSnapshot,
+  RunningCapture,
+} from '../src/shared/types'
 
 const SNAPSHOT: MetricsSnapshot = {
   timestamp: '2026-07-28T00:00:00.000Z',
@@ -33,6 +38,31 @@ const SNAPSHOT: MetricsSnapshot = {
     involuntaryContextSwitchRate: 30,
     majorPageFaultRate: 0,
   },
+}
+
+const HTTP_REQUESTS: HttpRequestsResponse = {
+  recent: [
+    {
+      timestamp: '2026-07-28T00:00:00.000Z',
+      method: 'GET',
+      path: '/signalk/v1/api/vessels/self?depth=1',
+      statusCode: 200,
+      durationMs: 4.2,
+      responseBytes: 1832,
+    },
+  ],
+  aggregate: [
+    {
+      method: 'GET',
+      path: '/signalk/v1/api/vessels/self',
+      count: 12,
+      totalMs: 50.4,
+      maxMs: 9.9,
+      errorCount: 0,
+      totalBytes: 21984,
+      lastSeen: '2026-07-28T00:00:00.000Z',
+    },
+  ],
 }
 
 class FakeCaptures implements CaptureController {
@@ -106,6 +136,7 @@ describe('HTTP routes', () => {
     captures = new FakeCaptures()
     deps = {
       metrics: { latest: () => SNAPSHOT },
+      httpRequests: { snapshot: () => HTTP_REQUESTS },
       captures,
       store,
       options: {
@@ -129,6 +160,12 @@ describe('HTTP routes', () => {
     const res = await request(app).get('/metrics')
     expect(res.status).toBe(200)
     expect(res.body).toEqual(SNAPSHOT)
+  })
+
+  it('GET /http-requests returns the tracker snapshot', async () => {
+    const res = await request(app).get('/http-requests')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual(HTTP_REQUESTS)
   })
 
   it('answers 503 before the plugin has started', async () => {
