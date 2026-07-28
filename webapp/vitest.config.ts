@@ -14,5 +14,8 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     // Testing Library registers its afterEach(cleanup) via the global hooks.
     globals: true,
+    // CI runs these under QEMU armv7 emulation, where the heavier component
+    // tests overrun the default 5s.
+    testTimeout: 30_000,
   },
 })

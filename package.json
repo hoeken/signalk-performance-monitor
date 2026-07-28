@@ -41,7 +41,7 @@
   "license": "MIT",
   "signalk": {
     "displayName": "Performance Monitor",
-    "appIcon": "webapp/public/icon.png",
+    "appIcon": "icon.png",
     "screenshots": [
       "./docs/screenshots/home.png",
       "./docs/screenshots/cpu.png",

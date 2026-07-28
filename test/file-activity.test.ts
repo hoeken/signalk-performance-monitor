@@ -20,6 +20,12 @@ import {
 } from '../src/file-activity'
 import { bucketForDataPath } from '../src/attribution'
 
+// The real capture reads /proc/self, which only exists on Linux. The fake
+// layouts here need fd symlinks with Unix-style targets, which Windows can't
+// represent (listOpenFiles rightly ignores non-absolute targets), so the
+// symlink-driven tests skip there.
+const onWindows = process.platform === 'win32'
+
 const PROC_IO_TEXT = [
   'rchar: 120000',
   'wchar: 340000',
@@ -187,23 +193,26 @@ describe('listOpenFiles', () => {
     )
   }
 
-  it('lists regular files with access flags, skipping sockets and pipes', async () => {
-    const fileA = path.join(dir, 'a.log')
-    const fileB = path.join(dir, 'b.db')
-    await fs.writeFile(fileA, 'aaa')
-    await fs.writeFile(fileB, 'bbb')
-    await addFd(3, fileA, '0102101') // O_WRONLY | O_CREAT | O_APPEND | O_LARGEFILE
-    await addFd(4, fileB, '0100002') // O_RDWR
-    await addFd(5, 'socket:[12345]', '02')
-    await addFd(6, 'anon_inode:[eventpoll]', '02')
-    await fs.symlink(path.join(dir, 'gone'), path.join(procSelf, 'fd', '7')) // dangling
+  it.skipIf(onWindows)(
+    'lists regular files with access flags, skipping sockets and pipes',
+    async () => {
+      const fileA = path.join(dir, 'a.log')
+      const fileB = path.join(dir, 'b.db')
+      await fs.writeFile(fileA, 'aaa')
+      await fs.writeFile(fileB, 'bbb')
+      await addFd(3, fileA, '0102101') // O_WRONLY | O_CREAT | O_APPEND | O_LARGEFILE
+      await addFd(4, fileB, '0100002') // O_RDWR
+      await addFd(5, 'socket:[12345]', '02')
+      await addFd(6, 'anon_inode:[eventpoll]', '02')
+      await fs.symlink(path.join(dir, 'gone'), path.join(procSelf, 'fd', '7')) // dangling
 
-    const open = await listOpenFiles(procSelf)
-    expect(open.map((entry) => entry.path).sort()).toEqual([fileA, fileB])
-    const byPath = new Map(open.map((entry) => [entry.path, entry]))
-    expect(byPath.get(fileA)).toMatchObject({ writable: true, readable: false, append: true })
-    expect(byPath.get(fileB)).toMatchObject({ writable: true, readable: true, append: false })
-  })
+      const open = await listOpenFiles(procSelf)
+      expect(open.map((entry) => entry.path).sort()).toEqual([fileA, fileB])
+      const byPath = new Map(open.map((entry) => [entry.path, entry]))
+      expect(byPath.get(fileA)).toMatchObject({ writable: true, readable: false, append: true })
+      expect(byPath.get(fileB)).toMatchObject({ writable: true, readable: true, append: false })
+    },
+  )
 
   it('returns empty when the fd dir does not exist', async () => {
     expect(await listOpenFiles(path.join(dir, 'missing'))).toEqual([])
@@ -243,119 +252,122 @@ describe('FileActivityCapture', () => {
     expect(FileActivityCapture.isSupported(path.join(dir, 'nope'))).toBe(false)
   })
 
-  it('tracks growth, churn, SQLite counters, and the unattributed remainder', async () => {
-    const pluginDir = path.join(dataRoot, 'plugin-config-data', 'crowd-depth')
-    await fs.mkdir(pluginDir, { recursive: true })
-    const db = path.join(pluginDir, 'depth.db')
-    const wal = `${db}-wal`
-    const shm = `${db}-shm`
-    const log = path.join(dataRoot, 'server.log')
-    await fs.writeFile(db, Buffer.alloc(4096))
-    await fs.writeFile(wal, Buffer.alloc(1000))
-    await fs.writeFile(shm, walIndexBuffer({ iChange: 100, mxFrame: 10 }))
-    await fs.writeFile(log, 'start\n')
-    await setProcIo(0)
-    await openFd(3, db)
-    await openFd(4, log, '0102101') // append log writer
+  it.skipIf(onWindows)(
+    'tracks growth, churn, SQLite counters, and the unattributed remainder',
+    async () => {
+      const pluginDir = path.join(dataRoot, 'plugin-config-data', 'crowd-depth')
+      await fs.mkdir(pluginDir, { recursive: true })
+      const db = path.join(pluginDir, 'depth.db')
+      const wal = `${db}-wal`
+      const shm = `${db}-shm`
+      const log = path.join(dataRoot, 'server.log')
+      await fs.writeFile(db, Buffer.alloc(4096))
+      await fs.writeFile(wal, Buffer.alloc(1000))
+      await fs.writeFile(shm, walIndexBuffer({ iChange: 100, mxFrame: 10 }))
+      await fs.writeFile(log, 'start\n')
+      await setProcIo(0)
+      await openFd(3, db)
+      await openFd(4, log, '0102101') // append log writer
 
-    expect(FileActivityCapture.isSupported(procSelf)).toBe(true)
-    const capture = new FileActivityCapture({
-      procSelfDir: procSelf,
-      bucketOptions: { dataRoot },
-    })
-    await capture.sample() // baseline
+      expect(FileActivityCapture.isSupported(procSelf)).toBe(true)
+      const capture = new FileActivityCapture({
+        procSelfDir: procSelf,
+        bucketOptions: { dataRoot },
+      })
+      await capture.sample() // baseline
 
-    // Interval 1: 5 commits / 6 WAL frames, the log grows, WAL rewrites in place.
-    await setProcIo(100_000)
-    await fs.writeFile(shm, walIndexBuffer({ iChange: 105, mxFrame: 16 }))
-    await fs.appendFile(log, 'x'.repeat(500))
-    const walPast = await fs.open(wal, 'r+')
-    await walPast.write(Buffer.from('y'), 0, 1, 10)
-    await walPast.close()
-    await capture.sample()
+      // Interval 1: 5 commits / 6 WAL frames, the log grows, WAL rewrites in place.
+      await setProcIo(100_000)
+      await fs.writeFile(shm, walIndexBuffer({ iChange: 105, mxFrame: 16 }))
+      await fs.appendFile(log, 'x'.repeat(500))
+      const walPast = await fs.open(wal, 'r+')
+      await walPast.write(Buffer.from('y'), 0, 1, 10)
+      await walPast.close()
+      await capture.sample()
 
-    // Interval 2: a checkpoint resets mxFrame (16 frames flushed), then 2 more frames.
-    await setProcIo(300_000)
-    await fs.writeFile(shm, walIndexBuffer({ iChange: 107, mxFrame: 2 }))
-    await capture.sample()
+      // Interval 2: a checkpoint resets mxFrame (16 frames flushed), then 2 more frames.
+      await setProcIo(300_000)
+      await fs.writeFile(shm, walIndexBuffer({ iChange: 107, mxFrame: 2 }))
+      await capture.sample()
 
-    const report = capture.buildReport({
-      id: 'files-2026-07-29T00-00-00-000Z',
-      capturedAt: '2026-07-29T00:00:00.000Z',
-      durationMs: 2000,
-      sampleIntervalSeconds: 1,
-    })
+      const report = capture.buildReport({
+        id: 'files-2026-07-29T00-00-00-000Z',
+        capturedAt: '2026-07-29T00:00:00.000Z',
+        durationMs: 2000,
+        sampleIntervalSeconds: 1,
+      })
 
-    expect(report.type).toBe('files')
-    expect(report.sampleCount).toBe(3)
-    expect(report.totals.writeBytes).toBe(300_000)
-    expect(report.totals.writeBytesPerSecond).toBe(150_000)
+      expect(report.type).toBe('files')
+      expect(report.sampleCount).toBe(3)
+      expect(report.totals.writeBytes).toBe(300_000)
+      expect(report.totals.writeBytesPerSecond).toBe(150_000)
 
-    // The open db fd pulled its -wal/-shm siblings into the watch set.
-    const paths = report.files.map((file) => file.path)
-    expect(paths).toEqual(expect.arrayContaining([db, wal, shm, log]))
+      // The open db fd pulled its -wal/-shm siblings into the watch set.
+      const paths = report.files.map((file) => file.path)
+      expect(paths).toEqual(expect.arrayContaining([db, wal, shm, log]))
 
-    const logFile = report.files.find((file) => file.path === log)
-    expect(logFile).toMatchObject({
-      bucket: 'signalk-server (core)',
-      mode: 'append',
-      kind: 'file',
-      growthBytes: 500,
-    })
-    expect(logFile!.mtimeChanges).toBeGreaterThanOrEqual(1)
+      const logFile = report.files.find((file) => file.path === log)
+      expect(logFile).toMatchObject({
+        bucket: 'signalk-server (core)',
+        mode: 'append',
+        kind: 'file',
+        growthBytes: 500,
+      })
+      expect(logFile!.mtimeChanges).toBeGreaterThanOrEqual(1)
 
-    const walFile = report.files.find((file) => file.path === wal)
-    expect(walFile).toMatchObject({ kind: 'sqlite-wal', growthBytes: 0 })
-    expect(walFile!.inPlaceRewrites).toBeGreaterThanOrEqual(1)
+      const walFile = report.files.find((file) => file.path === wal)
+      expect(walFile).toMatchObject({ kind: 'sqlite-wal', growthBytes: 0 })
+      expect(walFile!.inPlaceRewrites).toBeGreaterThanOrEqual(1)
 
-    expect(report.databases).toHaveLength(1)
-    const activity = report.databases[0]
-    expect(activity).toMatchObject({
-      path: db,
-      bucket: 'crowd-depth',
-      pageSize: 4096,
-      commits: 7,
-      framesWritten: 8,
-      checkpoints: 1,
-    })
-    // 8 frames × (4096+24) + 16 checkpointed frames × 4096
-    expect(activity.estimatedWriteBytes).toBe(8 * 4120 + 16 * 4096)
-    expect(activity.commitsPerSecond).toBe(3.5)
-    expect(activity.notes[0]).toMatch(/consider batching/)
+      expect(report.databases).toHaveLength(1)
+      const activity = report.databases[0]
+      expect(activity).toMatchObject({
+        path: db,
+        bucket: 'crowd-depth',
+        pageSize: 4096,
+        commits: 7,
+        framesWritten: 8,
+        checkpoints: 1,
+      })
+      // 8 frames × (4096+24) + 16 checkpointed frames × 4096
+      expect(activity.estimatedWriteBytes).toBe(8 * 4120 + 16 * 4096)
+      expect(activity.commitsPerSecond).toBe(3.5)
+      expect(activity.notes[0]).toMatch(/consider batching/)
 
-    // Attribution: db estimate + log growth + honesty-check remainder = total.
-    const byName = new Map(report.attribution.map((row) => [row.name, row]))
-    expect(byName.get('crowd-depth')?.estimatedWriteBytes).toBe(activity.estimatedWriteBytes)
-    expect(byName.get('signalk-server (core)')?.estimatedWriteBytes).toBe(500)
-    expect(byName.get('(unattributed)')?.estimatedWriteBytes).toBe(
-      300_000 - activity.estimatedWriteBytes - 500,
-    )
+      // Attribution: db estimate + log growth + honesty-check remainder = total.
+      const byName = new Map(report.attribution.map((row) => [row.name, row]))
+      expect(byName.get('crowd-depth')?.estimatedWriteBytes).toBe(activity.estimatedWriteBytes)
+      expect(byName.get('signalk-server (core)')?.estimatedWriteBytes).toBe(500)
+      expect(byName.get('(unattributed)')?.estimatedWriteBytes).toBe(
+        300_000 - activity.estimatedWriteBytes - 500,
+      )
 
-    const raw = capture.rawCapture()
-    expect(raw.samples).toHaveLength(3)
-    expect(raw.samples[2].io?.writeBytes).toBe(300_000)
-    expect(raw.samples[2].walIndexes[db]).toMatchObject({ iChange: 107, mxFrame: 2 })
-    expect(raw.modes?.[log]).toBe('append')
+      const raw = capture.rawCapture()
+      expect(raw.samples).toHaveLength(3)
+      expect(raw.samples[2].io?.writeBytes).toBe(300_000)
+      expect(raw.samples[2].walIndexes[db]).toMatchObject({ iChange: 107, mxFrame: 2 })
+      expect(raw.modes?.[log]).toBe('append')
 
-    // Replaying the serialized raw capture (what download → upload does)
-    // rebuilds the identical report.
-    const replayed = JSON.parse(JSON.stringify(raw)) as FilesRawCapture
-    expect(isFilesRawCapture(replayed)).toBe(true)
-    expect(
-      buildFilesReport(
-        replayed,
-        {
-          id: 'files-2026-07-29T00-00-00-000Z',
-          capturedAt: '2026-07-29T00:00:00.000Z',
-          durationMs: 2000,
-          sampleIntervalSeconds: 1,
-        },
-        { dataRoot },
-      ),
-    ).toEqual(report)
-  })
+      // Replaying the serialized raw capture (what download → upload does)
+      // rebuilds the identical report.
+      const replayed = JSON.parse(JSON.stringify(raw)) as FilesRawCapture
+      expect(isFilesRawCapture(replayed)).toBe(true)
+      expect(
+        buildFilesReport(
+          replayed,
+          {
+            id: 'files-2026-07-29T00-00-00-000Z',
+            capturedAt: '2026-07-29T00:00:00.000Z',
+            durationMs: 2000,
+            sampleIntervalSeconds: 1,
+          },
+          { dataRoot },
+        ),
+      ).toEqual(report)
+    },
+  )
 
-  it('keeps previous counters over a torn shm read', async () => {
+  it.skipIf(onWindows)('keeps previous counters over a torn shm read', async () => {
     const dbDir = path.join(dataRoot, 'plugin-config-data', 'p')
     await fs.mkdir(dbDir, { recursive: true })
     const db = path.join(dbDir, 'x.db')
