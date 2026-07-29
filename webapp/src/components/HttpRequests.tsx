@@ -208,6 +208,17 @@ const aggregateColumns: ColumnDef<HttpPathStats>[] = [
     cell: ({ row }) => row.original.count.toLocaleString(),
   },
   {
+    accessorKey: 'errorCount',
+    header: 'Errors',
+    meta: NUMERIC,
+    cell: ({ row }) =>
+      row.original.errorCount > 0 ? (
+        <span className="font-medium text-error">{row.original.errorCount.toLocaleString()}</span>
+      ) : (
+        '0'
+      ),
+  },
+  {
     id: 'avgMs',
     accessorFn: (row) => (row.count > 0 ? row.totalMs / row.count : 0),
     header: 'Duration',
@@ -223,17 +234,6 @@ const aggregateColumns: ColumnDef<HttpPathStats>[] = [
     meta: NUMERIC,
     cell: ({ row }) =>
       row.original.totalBytes > 0 ? formatBytes(row.original.totalBytes / row.original.count) : '—',
-  },
-  {
-    accessorKey: 'errorCount',
-    header: 'Errors',
-    meta: NUMERIC,
-    cell: ({ row }) =>
-      row.original.errorCount > 0 ? (
-        <span className="font-medium text-error">{row.original.errorCount.toLocaleString()}</span>
-      ) : (
-        '0'
-      ),
   },
 ]
 

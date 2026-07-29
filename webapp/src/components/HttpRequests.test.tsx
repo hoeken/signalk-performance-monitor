@@ -256,10 +256,10 @@ describe('HttpRequests', () => {
       'GET',
       '/signalk/v1/api/vessels/self',
       '240',
+      '0',
       '4.2 ms', // 1008ms / 240
       '1.8 kB', // 439,680 bytes / 240
-      '0',
     ])
-    expect(rows[1]![5]).toBe('3') // error count
+    expect(rows[1]![3]).toBe('3') // error count
   })
 })
