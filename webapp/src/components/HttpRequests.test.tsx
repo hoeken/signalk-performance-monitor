@@ -181,6 +181,35 @@ describe('HttpRequests', () => {
     expect(screen.getByText('250.0 ms')).toHaveClass('text-error')
   })
 
+  it('renders methods as soft pills and color-codes statuses by hundred-block', () => {
+    const requests = [
+      { method: 'GET', statusCode: 200 },
+      { method: 'POST', statusCode: 302 },
+      { method: 'PUT', statusCode: 404 },
+      { method: 'DELETE', statusCode: 503 },
+      { method: 'OPTIONS', statusCode: 101 },
+    ].map((request, i) => ({
+      timestamp: `2026-07-28T10:15:0${i}.000Z`,
+      path: `/req/${i}`,
+      durationMs: 1,
+      ...request,
+    }))
+    render(<HttpRequests data={{ recent: requests, aggregate: [] }} />)
+
+    expect(screen.getByText('GET')).toHaveClass('badge', 'badge-info', 'badge-soft')
+    expect(screen.getByText('POST')).toHaveClass('badge-success')
+    expect(screen.getByText('PUT')).toHaveClass('badge-warning')
+    expect(screen.getByText('DELETE')).toHaveClass('badge-error')
+    // Methods outside the color map still get a pill, just an uncolored one.
+    expect(screen.getByText('OPTIONS')).toHaveClass('badge', 'badge-ghost')
+
+    expect(screen.getByText('200')).toHaveClass('text-success')
+    expect(screen.getByText('302')).toHaveClass('text-info')
+    expect(screen.getByText('404')).toHaveClass('text-warning')
+    expect(screen.getByText('503')).toHaveClass('text-error')
+    expect(screen.getByText('101')).not.toHaveAttribute('class')
+  })
+
   it('paginates at 15 rows per page', async () => {
     const user = userEvent.setup()
     const many = {

@@ -22,10 +22,37 @@ function isSelfRequest(path: string): boolean {
   return SELF_PREFIXES.some((prefix) => path.startsWith(prefix))
 }
 
-function StatusCell({ statusCode }: { statusCode: number }) {
+/**
+ * Soft badge color per HTTP method; methods outside the map (HEAD, OPTIONS,
+ * WebDAV verbs, …) fall back to a ghost badge.
+ */
+const METHOD_BADGE: Record<string, string> = {
+  GET: 'badge-info badge-soft',
+  POST: 'badge-success badge-soft',
+  PUT: 'badge-warning badge-soft',
+  PATCH: 'badge-accent badge-soft',
+  DELETE: 'badge-error badge-soft',
+}
+
+function MethodBadge({ method }: { method: string }) {
   return (
-    <span className={statusCode >= 400 ? 'font-medium text-error' : undefined}>{statusCode}</span>
+    <span className={`badge badge-sm font-medium ${METHOD_BADGE[method] ?? 'badge-ghost'}`}>
+      {method}
+    </span>
   )
+}
+
+/** Status color by hundred-block: 2xx green, 3xx blue, 4xx amber, 5xx red. */
+const STATUS_CLASSES: Record<number, string> = {
+  2: 'text-success',
+  3: 'text-info',
+  4: 'text-warning',
+  5: 'text-error',
+}
+
+function StatusCell({ statusCode }: { statusCode: number }) {
+  const color = STATUS_CLASSES[Math.floor(statusCode / 100)]
+  return <span className={color ? `font-medium ${color}` : undefined}>{statusCode}</span>
 }
 
 /**
@@ -132,7 +159,11 @@ const recentColumns: ColumnDef<RecentHttpRequest>[] = [
       <span className="whitespace-nowrap">{formatDateTime(row.original.timestamp)}</span>
     ),
   },
-  { accessorKey: 'method', header: 'Method' },
+  {
+    accessorKey: 'method',
+    header: 'Method',
+    cell: ({ row }) => <MethodBadge method={row.original.method} />,
+  },
   {
     accessorKey: 'path',
     header: 'Path',
@@ -160,7 +191,11 @@ const recentColumns: ColumnDef<RecentHttpRequest>[] = [
 ]
 
 const aggregateColumns: ColumnDef<HttpPathStats>[] = [
-  { accessorKey: 'method', header: 'Method' },
+  {
+    accessorKey: 'method',
+    header: 'Method',
+    cell: ({ row }) => <MethodBadge method={row.original.method} />,
+  },
   {
     accessorKey: 'path',
     header: 'Path',
