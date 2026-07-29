@@ -72,6 +72,15 @@
      flame violet. */
   --badge-violet: #4a3aa7;
   --badge-violet-bg: color-mix(in oklab, #4a3aa7 12%, #fcfcfb);
+
+  /* Status text for the metric tile values (MetricsTiles.tsx). Text-safe
+     steps, not the theme tokens: warning #fab219 sits at 1.79:1 on this
+     surface, so warn wears a darker amber (5.24:1); ok is the success-text
+     green from the data-viz reference palette (7.35:1). Warn/bad are also
+     paired with a triangle/octagon icon so state never rides on hue alone. */
+  --status-ok: #006300;
+  --status-warn: #8a6400;
+  --status-bad: #d03b3b;
 }
 
 @plugin 'daisyui/theme' {
@@ -136,4 +145,12 @@
      apply. */
   --badge-violet: #9085e9;
   --badge-violet-bg: color-mix(in oklab, #9085e9 16%, #1a1a19);
+
+  /* Status text for the metric tile values: the theme's own success and
+     warning tokens read fine on the dark surface (5.19:1 / 9.49:1); bad is
+     the error red at 3.62:1 — value text is 2xl (large-text 3:1 floor) and
+     carries the icon pairing. */
+  --status-ok: #0ca30c;
+  --status-warn: #fab219;
+  --status-bad: #d03b3b;
 }
