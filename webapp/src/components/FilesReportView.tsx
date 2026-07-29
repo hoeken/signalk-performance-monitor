@@ -130,7 +130,7 @@ function FileCell({ file, dataRoot }: { file: FileActivityFile; dataRoot: string
             // the theme tokens — no daisyUI semantic slot is purple here.
             <span
               className="badge badge-xs border-transparent"
-              style={{ backgroundColor: 'var(--badge-sqlite-bg)', color: 'var(--badge-sqlite)' }}
+              style={{ backgroundColor: 'var(--badge-violet-bg)', color: 'var(--badge-violet)' }}
             >
               {file.kind.split('-')[0]}
             </span>

@@ -67,10 +67,11 @@
   --flame-folded: #898781;
   --flame-folded-ink: #0b0b0b;
 
-  /* Soft violet badge (SQLite kind in the files table) — the theme has no
-     purple semantic slot (secondary is grey), so reuse the flame violet. */
-  --badge-sqlite: #4a3aa7;
-  --badge-sqlite-bg: color-mix(in oklab, #4a3aa7 12%, #fcfcfb);
+  /* Soft violet badge (SQLite kind in the files table, CPU profile type) —
+     the theme has no purple semantic slot (secondary is grey), so reuse the
+     flame violet. */
+  --badge-violet: #4a3aa7;
+  --badge-violet-bg: color-mix(in oklab, #4a3aa7 12%, #fcfcfb);
 }
 
 @plugin 'daisyui/theme' {
@@ -129,9 +130,10 @@
   --flame-folded: #898781;
   --flame-folded-ink: #0b0b0b;
 
-  /* Soft violet badge (SQLite kind in the files table). Text uses the
-     lighter reference violet — as text on a tinted surface it reads fine;
-     the CVD concern that ruled it out as a flame fill doesn't apply. */
-  --badge-sqlite: #9085e9;
-  --badge-sqlite-bg: color-mix(in oklab, #9085e9 16%, #1a1a19);
+  /* Soft violet badge (SQLite kind in the files table, CPU profile type).
+     Text uses the lighter reference violet — as text on a tinted surface it
+     reads fine; the CVD concern that ruled it out as a flame fill doesn't
+     apply. */
+  --badge-violet: #9085e9;
+  --badge-violet-bg: color-mix(in oklab, #9085e9 16%, #1a1a19);
 }
