@@ -1,4 +1,4 @@
-import { useEffect, useState, type MutableRefObject } from 'react'
+import { Fragment, useEffect, useState, type MutableRefObject, type ReactNode } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -7,6 +7,7 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type ExpandedState,
   type SortingState,
 } from '@tanstack/react-table'
 
@@ -62,6 +63,10 @@ export interface DataTableProps<T> {
   globalFilter: string
   emptyMessage: string
   exportRef: ExportRef
+  /** When set, rows can expand (row.toggleExpanded from a cell) into a full-width detail row. */
+  renderDetail?: (item: T) => ReactNode
+  /** Stable row identity; required for expansion to survive polled data replacing the rows. */
+  getRowId?: (item: T, index: number) => string
 }
 
 export function DataTable<T>({
@@ -71,15 +76,21 @@ export function DataTable<T>({
   globalFilter,
   emptyMessage,
   exportRef,
+  renderDetail,
+  getRowId,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting)
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: PAGE_SIZE })
+  const [expanded, setExpanded] = useState<ExpandedState>({})
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter, pagination },
+    state: { sorting, globalFilter, pagination, expanded },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onExpandedChange: setExpanded,
+    getRowCanExpand: () => renderDetail !== undefined,
+    getRowId,
     globalFilterFn: 'includesString',
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -148,13 +159,20 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className={cellClass(cell.column.columnDef.meta)}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
+            <Fragment key={row.id}>
+              <tr>
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className={cellClass(cell.column.columnDef.meta)}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+              {renderDetail && row.getIsExpanded() ? (
+                <tr className="bg-base-200/50">
+                  <td colSpan={row.getVisibleCells().length}>{renderDetail(row.original)}</td>
+                </tr>
+              ) : null}
+            </Fragment>
           ))}
         </tbody>
       </table>

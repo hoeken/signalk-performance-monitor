@@ -74,7 +74,7 @@ describe('HttpRequests', () => {
 
     const rows = rowTexts()
     expect(rows).toHaveLength(2)
-    expect(rows[0]![2]).toBe('/signalk/v1/api/vessels/self?depth=1')
+    expect(rows[0]![3]).toBe('/signalk/v1/api/vessels/self?depth=1')
     // GET paths link to the live URL; other methods stay plain text.
     expect(
       screen.getByRole('link', { name: '/signalk/v1/api/vessels/self?depth=1' }),
@@ -82,10 +82,10 @@ describe('HttpRequests', () => {
     expect(
       screen.queryByRole('link', { name: '/signalk/v1/api/vessels/self/steering/autopilot' }),
     ).not.toBeInTheDocument()
-    expect(rows[0]![4]).toBe('4.2 ms')
-    expect(rows[0]![5]).toBe('1.8 kB')
-    expect(rows[1]![3]).toBe('405')
-    expect(rows[1]![5]).toBe('—')
+    expect(rows[0]![5]).toBe('4.2 ms')
+    expect(rows[0]![6]).toBe('1.8 kB')
+    expect(rows[1]![4]).toBe('405')
+    expect(rows[1]![6]).toBe('—')
     expect(screen.queryByText(/performance-monitor\/metrics/)).not.toBeInTheDocument()
   })
 
@@ -105,7 +105,34 @@ describe('HttpRequests', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search requests' }), 'autopilot')
     const rows = rowTexts()
     expect(rows).toHaveLength(1)
-    expect(rows[0]![2]).toContain('autopilot')
+    expect(rows[0]![3]).toContain('autopilot')
+  })
+
+  it('expands a request’s headers behind the inspect toggle', async () => {
+    const user = userEvent.setup()
+    render(<HttpRequests data={httpRequestsFixture} />)
+
+    const inspect = screen.getByRole('button', {
+      name: 'Inspect GET /signalk/v1/api/vessels/self?depth=1',
+    })
+    expect(screen.queryByText('referer')).not.toBeInTheDocument()
+
+    await user.click(inspect)
+    expect(inspect).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('referer')).toBeInTheDocument()
+    expect(screen.getByText('http://boat.local/admin/')).toBeInTheDocument()
+    expect(screen.getByText('(redacted)')).toBeInTheDocument()
+
+    // Entries recorded before headers were tracked degrade gracefully.
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Inspect PUT /signalk/v1/api/vessels/self/steering/autopilot',
+      }),
+    )
+    expect(screen.getByText('No request headers captured.')).toBeInTheDocument()
+
+    await user.click(inspect)
+    expect(screen.queryByText('referer')).not.toBeInTheDocument()
   })
 
   it('sorts by a column when its header is clicked', async () => {
@@ -114,9 +141,9 @@ describe('HttpRequests', () => {
 
     // Numeric columns sort descending first: slowest requests on top.
     await user.click(screen.getByRole('button', { name: /Duration/ }))
-    expect(rowTexts().map((row) => row[4])).toEqual(['4.2 ms', '1.1 ms'])
+    expect(rowTexts().map((row) => row[5])).toEqual(['4.2 ms', '1.1 ms'])
     await user.click(screen.getByRole('button', { name: /Duration/ }))
-    expect(rowTexts().map((row) => row[4])).toEqual(['1.1 ms', '4.2 ms'])
+    expect(rowTexts().map((row) => row[5])).toEqual(['1.1 ms', '4.2 ms'])
   })
 
   it('highlights slow durations by tier', async () => {

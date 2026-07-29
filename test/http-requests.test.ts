@@ -108,6 +108,45 @@ describe('HttpRequestTracker', () => {
     expect(aggregate.find((s) => s.method === 'POST')?.count).toBe(1)
   })
 
+  it('keeps request headers on recent entries, redacting credential values', () => {
+    const tracker = new HttpRequestTracker()
+    tracker.record(
+      1,
+      {
+        req: {
+          method: 'GET',
+          url: '/a',
+          headers: {
+            referer: 'http://boat.local/admin/',
+            'user-agent': 'test-agent',
+            cookie: 'JAUTHENTICATION=secret',
+            authorization: 'Bearer secret',
+            'x-multi': ['one', 'two'],
+            'x-number': 42, // non-string values are dropped
+          },
+        },
+        res: { statusCode: 200, statusMessage: 'OK', headers: {} },
+      },
+      T0,
+    )
+
+    const { recent, aggregate } = tracker.snapshot()
+    expect(recent[0]!.requestHeaders).toEqual({
+      referer: 'http://boat.local/admin/',
+      'user-agent': 'test-agent',
+      cookie: '(redacted)',
+      authorization: '(redacted)',
+      'x-multi': 'one, two',
+    })
+    expect(aggregate[0]).not.toHaveProperty('requestHeaders')
+  })
+
+  it('omits requestHeaders when the entry carries none', () => {
+    const tracker = new HttpRequestTracker()
+    tracker.record(1, detail({ url: '/a' }), T0)
+    expect(tracker.snapshot().recent[0]).not.toHaveProperty('requestHeaders')
+  })
+
   it('counts 4xx/5xx responses as errors', () => {
     const tracker = new HttpRequestTracker()
     tracker.record(1, detail({ url: '/a', statusCode: 200 }), T0)
@@ -178,6 +217,7 @@ describe('HttpRequestTracker', () => {
       const { recent, aggregate } = tracker.snapshot()
       const hit = recent.find((r) => r.path === '/hello?greeting=1')
       expect(hit).toMatchObject({ method: 'GET', statusCode: 200, responseBytes: 2 })
+      expect(hit!.requestHeaders).toMatchObject({ host: expect.stringContaining('127.0.0.1') })
       expect(hit!.durationMs).toBeGreaterThan(0)
       expect(Math.abs(new Date(hit!.timestamp).getTime() - Date.now())).toBeLessThan(5000)
       expect(aggregate.find((s) => s.path === '/hello')).toMatchObject({ method: 'GET', count: 1 })

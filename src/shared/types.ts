@@ -44,6 +44,8 @@ export interface RecentHttpRequest {
   durationMs: number
   /** response Content-Length; absent for chunked/streamed responses */
   responseBytes?: number
+  /** request headers as received; authorization/cookie values are redacted */
+  requestHeaders?: Record<string, string>
 }
 
 /** Cumulative per-path stats since plugin start; query strings are stripped. */

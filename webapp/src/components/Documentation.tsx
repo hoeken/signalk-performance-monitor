@@ -93,16 +93,17 @@ export function Documentation() {
             requests arrived during the interval.
           </Term>
           <Term name="HTTP Requests (Latest / Aggregate)">
-            The Latest tab lists the last 100 requests the server handled — any client, not just
-            this webapp — with query strings intact. The Aggregate tab totals every request per path
-            (query strings stripped) since the plugin started; its Duration and Size columns are
-            per-request averages. Resource requests — chart tiles, route or waypoint entries — are
-            grouped under their resource type (e.g. <code>…/resources/charts</code>) so each tile
-            doesn&apos;t get its own row. Size is the response&apos;s declared{' '}
-            <code>Content-Length</code>; streamed responses don&apos;t declare one and show a dash.
-            Durations are color-coded: green under 25 ms, blue to 50 ms, orange to 100 ms,
-            orange-red to 200 ms, and red beyond. Click a column header to sort, and use the search
-            box to filter. WebSocket traffic is not included.
+            The Latest tab lists the last 200 requests the server handled — any client, not just
+            this webapp — with query strings intact; the magnifier on a row expands the request
+            headers (referrer, user agent, … — authorization and cookie values are redacted). The
+            Aggregate tab totals every request per path (query strings stripped) since the plugin
+            started; its Duration and Size columns are per-request averages. Resource requests —
+            chart tiles, route or waypoint entries — are grouped under their resource type (e.g.{' '}
+            <code>…/resources/charts</code>) so each tile doesn&apos;t get its own row. Size is the
+            response&apos;s declared <code>Content-Length</code>; streamed responses don&apos;t
+            declare one and show a dash. Durations are color-coded: green under 25 ms, blue to 50
+            ms, orange to 100 ms, orange-red to 200 ms, and red beyond. Click a column header to
+            sort, and use the search box to filter. WebSocket traffic is not included.
           </Term>
           <Term name="Disk writes / reads">
             Storage I/O caused by the server process in bytes per second, counted by the kernel

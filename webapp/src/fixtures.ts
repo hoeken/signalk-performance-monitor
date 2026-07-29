@@ -33,6 +33,12 @@ export const httpRequestsFixture: HttpRequestsResponse = {
       statusCode: 200,
       durationMs: 4.2,
       responseBytes: 1832,
+      requestHeaders: {
+        host: 'boat.local',
+        referer: 'http://boat.local/admin/',
+        'user-agent': 'Mozilla/5.0',
+        cookie: '(redacted)',
+      },
     },
     {
       timestamp: '2026-07-28T10:15:28.000Z',

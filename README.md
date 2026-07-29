@@ -32,9 +32,10 @@ modifications, no changes to other plugins.**
   churn for in-place rewriters, and passive SQLite WAL-index reads for per-database
   commit/frame/checkpoint rates — attributed per plugin and honesty-checked against
   the kernel's process-wide write counter. No strace, no locks, no writes.
-- **HTTP request tracking**: the last 100 requests (method, path with query string,
-  status, duration, response size) plus cumulative per-path aggregates (request count,
-  average/max/total duration, errors, bytes) — sortable, searchable tables in the webapp.
+- **HTTP request tracking**: the last 200 requests (method, path with query string,
+  status, duration, response size, request headers with credential values redacted)
+  plus cumulative per-path aggregates (request count, average/max/total duration,
+  errors, bytes) — sortable, searchable tables in the webapp.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
   per-plugin table with share bars and expandable top functions, file activity reports
@@ -84,7 +85,7 @@ function names. Base: `/plugins/signalk-performance-monitor`.
 | Method | Route                 | Description                                                                                   |
 | ------ | --------------------- | --------------------------------------------------------------------------------------------- |
 | GET    | `/metrics`            | Current metrics snapshot (JSON)                                                               |
-| GET    | `/http-requests`      | Last 100 requests + cumulative per-path aggregates                                            |
+| GET    | `/http-requests`      | Last 200 requests + cumulative per-path aggregates                                            |
 | POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running      |
 | POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`                   |
 | POST   | `/files-profile`      | Start file activity capture `{ duration?, sampleIntervalSeconds? }` → `{ id }`; 501 off-Linux |

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import type {
   HttpPathStats,
@@ -9,9 +9,10 @@ import { DataTable, downloadJson, NUMERIC, type ExportRef } from './DataTable'
 import { formatBytes, formatDateTime, formatMillis } from '../format'
 
 /**
- * Tabbed request log: the last 100 requests (query strings kept) and
- * cumulative per-path aggregates (query strings stripped). Sorting and
- * searching run client-side via the shared DataTable.
+ * Tabbed request log: the last 200 requests (query strings kept, request
+ * headers behind a per-row inspect toggle) and cumulative per-path
+ * aggregates (query strings stripped). Sorting and searching run
+ * client-side via the shared DataTable.
  */
 
 /** This plugin's own polling would otherwise dominate the latest-requests view. */
@@ -69,7 +70,61 @@ function PathCell({ path, method }: { path: string; method: string }) {
   )
 }
 
+/** The expanded detail row: every request header, one per line. */
+function RequestDetail({ request }: { request: RecentHttpRequest }) {
+  const headers = Object.entries(request.requestHeaders ?? {})
+  if (headers.length === 0) {
+    return <p className="px-2 py-1 text-xs text-base-content/60">No request headers captured.</p>
+  }
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 px-2 py-1 font-mono text-xs">
+      {headers.map(([name, value]) => (
+        <Fragment key={name}>
+          <dt className="text-base-content/60">{name}</dt>
+          <dd className="break-all">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
+/**
+ * Identity for expansion state: polling replaces the data array every tick,
+ * so index-based row ids would drift as new requests push rows down.
+ */
+function recentRowId(request: RecentHttpRequest): string {
+  return `${request.timestamp} ${request.method} ${request.path} ${request.durationMs}`
+}
+
 const recentColumns: ColumnDef<RecentHttpRequest>[] = [
+  {
+    id: 'inspect',
+    header: '',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs px-1"
+        aria-label={`Inspect ${row.original.method} ${row.original.path}`}
+        aria-expanded={row.getIsExpanded()}
+        onClick={row.getToggleExpandedHandler()}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </button>
+    ),
+  },
   {
     accessorKey: 'timestamp',
     header: 'Time',
@@ -240,6 +295,8 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
                 globalFilter={search}
                 emptyMessage="No requests recorded yet."
                 exportRef={exportRef}
+                renderDetail={(request) => <RequestDetail request={request} />}
+                getRowId={recentRowId}
               />
             ) : (
               <DataTable
@@ -254,7 +311,7 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
             )}
             <p className="text-xs text-base-content/60">
               {tab === 'recent'
-                ? 'The last 100 requests handled by the server (all consumers, not just this webapp). Size is the response Content-Length; streamed responses don’t declare one.'
+                ? 'The last 200 requests handled by the server (all consumers, not just this webapp). The magnifier expands a request’s headers. Size is the response Content-Length; streamed responses don’t declare one.'
                 : 'Cumulative per path since the plugin started — query strings stripped, and resource requests (chart tiles, routes, …) grouped under their resource type. Duration and Size are per-request averages. Click a column header to sort.'}
             </p>
           </>

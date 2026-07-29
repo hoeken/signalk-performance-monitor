@@ -3,7 +3,8 @@
  * metrics collector times (Node emits one per inbound request, but only while
  * observed — so like the interval metrics, this costs nothing while stopped):
  *
- *  - a ring buffer of the last `RECENT_LIMIT` requests, query strings kept
+ *  - a ring buffer of the last `RECENT_LIMIT` requests, query strings and
+ *    request headers kept (credential-bearing header values redacted)
  *  - cumulative per-path aggregates (count / total / max duration, errors,
  *    bytes), query strings stripped and known unbounded URL families
  *    collapsed (see `COLLAPSE_RULES`) so related hits share one row
@@ -11,7 +12,7 @@
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import type { HttpPathStats, HttpRequestsResponse, RecentHttpRequest } from './shared/types'
 
-export const RECENT_LIMIT = 100
+export const RECENT_LIMIT = 200
 
 /**
  * Aggregate-only path collapsing: each rule rewrites members of an unbounded
@@ -34,21 +35,40 @@ export function collapsePath(path: string): string {
 
 /** The fields Node puts on an `'http'` entry's `detail` for inbound requests. */
 interface HttpEntryDetail {
-  req: { method: string; url: string }
+  req: { method: string; url: string; headers?: Record<string, string> }
   res: { statusCode: number; headers?: Record<string, unknown> }
+}
+
+/** Headers whose values carry credentials; kept (so their presence is visible) but blanked. */
+const REDACTED_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization'])
+
+/** Flatten request headers to strings and blank out credential values. */
+function sanitizeHeaders(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const headers: Record<string, string> = {}
+  for (const [name, value] of Object.entries(raw)) {
+    const text = Array.isArray(value) ? value.join(', ') : typeof value === 'string' ? value : null
+    if (text === null) continue
+    headers[name] = REDACTED_HEADERS.has(name.toLowerCase()) ? '(redacted)' : text
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined
 }
 
 function parseDetail(detail: unknown): HttpEntryDetail | null {
   if (!detail || typeof detail !== 'object') return null
   const { req, res } = detail as { req?: unknown; res?: unknown }
   if (!req || typeof req !== 'object' || !res || typeof res !== 'object') return null
-  const { method, url } = req as { method?: unknown; url?: unknown }
+  const {
+    method,
+    url,
+    headers: reqHeaders,
+  } = req as { method?: unknown; url?: unknown; headers?: unknown }
   const { statusCode, headers } = res as { statusCode?: unknown; headers?: unknown }
   if (typeof method !== 'string' || typeof url !== 'string' || typeof statusCode !== 'number') {
     return null
   }
   return {
-    req: { method, url },
+    req: { method, url, headers: sanitizeHeaders(reqHeaders) },
     res: {
       statusCode,
       headers:
@@ -106,6 +126,7 @@ export class HttpRequestTracker {
       statusCode: parsed.res.statusCode,
       durationMs: roundMs(durationMs),
       ...(responseBytes === undefined ? {} : { responseBytes }),
+      ...(parsed.req.headers === undefined ? {} : { requestHeaders: parsed.req.headers }),
     })
     if (this.recent.length > RECENT_LIMIT) this.recent.shift()
 
