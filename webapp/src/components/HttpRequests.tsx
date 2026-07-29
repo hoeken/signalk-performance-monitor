@@ -48,7 +48,7 @@ function DurationCell({ ms }: { ms: number }) {
 
 /**
  * GET paths link to the live URL (a browser click repeats the same request);
- * other methods and the synthetic "(other)" row stay plain text.
+ * other methods and non-path targets (e.g. `OPTIONS *`) stay plain text.
  * Long paths truncate with an ellipsis (full path in the tooltip) so a giant
  * query string can't stretch the row; `block` makes `truncate` effective.
  */
@@ -255,7 +255,7 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
             <p className="text-xs text-base-content/60">
               {tab === 'recent'
                 ? 'The last 100 requests handled by the server (all consumers, not just this webapp). Size is the response Content-Length; streamed responses don’t declare one.'
-                : 'Cumulative per path since the plugin started, query strings stripped; Duration and Size are per-request averages. Click a column header to sort.'}
+                : 'Cumulative per path since the plugin started — query strings stripped, and resource requests (chart tiles, routes, …) grouped under their resource type. Duration and Size are per-request averages. Click a column header to sort.'}
             </p>
           </>
         )}

@@ -49,7 +49,7 @@ export interface RecentHttpRequest {
 /** Cumulative per-path stats since plugin start; query strings are stripped. */
 export interface HttpPathStats {
   method: string
-  /** path with the query string stripped; "(other)" collects overflow paths */
+  /** path with the query string stripped; resource entry/tile paths collapse to the resource type */
   path: string
   count: number
   /** milliseconds, summed across all requests */

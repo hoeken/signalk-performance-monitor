@@ -5,18 +5,32 @@
  *
  *  - a ring buffer of the last `RECENT_LIMIT` requests, query strings kept
  *  - cumulative per-path aggregates (count / total / max duration, errors,
- *    bytes), query strings stripped so all hits on a path share one row
- *
- * The aggregate map is capped: once `MAX_AGGREGATE_PATHS` distinct
- * method+path keys exist, further new paths accumulate under `(other)` so
- * unbounded path spaces (ids in URLs, scanners) can't grow memory forever.
+ *    bytes), query strings stripped and known unbounded URL families
+ *    collapsed (see `COLLAPSE_RULES`) so related hits share one row
  */
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import type { HttpPathStats, HttpRequestsResponse, RecentHttpRequest } from './shared/types'
 
 export const RECENT_LIMIT = 100
-export const MAX_AGGREGATE_PATHS = 500
-export const OVERFLOW_PATH = '(other)'
+
+/**
+ * Aggregate-only path collapsing: each rule rewrites members of an unbounded
+ * URL family (per-entry ids, chart tile coordinates) to the family's root so
+ * they share one aggregate row instead of one row each. First match wins;
+ * recent requests are never collapsed.
+ */
+const COLLAPSE_RULES: [RegExp, string][] = [
+  // Resource entries, global or per-vessel: keep the resource type, drop the
+  // entry id / chart tile coordinates after it.
+  [/^(\/signalk\/v\d+\/api\/(?:vessels\/[^/]+\/)?resources\/[^/]+)\/.+$/, '$1'],
+]
+
+export function collapsePath(path: string): string {
+  for (const [pattern, replacement] of COLLAPSE_RULES) {
+    if (pattern.test(path)) return path.replace(pattern, replacement)
+  }
+  return path
+}
 
 /** The fields Node puts on an `'http'` entry's `detail` for inbound requests. */
 interface HttpEntryDetail {
@@ -96,14 +110,11 @@ export class HttpRequestTracker {
     if (this.recent.length > RECENT_LIMIT) this.recent.shift()
 
     const queryStart = parsed.req.url.indexOf('?')
-    let path = queryStart === -1 ? parsed.req.url : parsed.req.url.slice(0, queryStart)
-    let method = parsed.req.method
-    let key = `${method} ${path}`
-    if (!this.aggregate.has(key) && this.aggregate.size >= MAX_AGGREGATE_PATHS) {
-      path = OVERFLOW_PATH
-      method = ''
-      key = OVERFLOW_PATH
-    }
+    const path = collapsePath(
+      queryStart === -1 ? parsed.req.url : parsed.req.url.slice(0, queryStart),
+    )
+    const method = parsed.req.method
+    const key = `${method} ${path}`
     const stats = this.aggregate.get(key) ?? {
       method,
       path,

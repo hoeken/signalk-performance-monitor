@@ -1,11 +1,6 @@
 import { createServer, get, type Server } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import {
-  HttpRequestTracker,
-  MAX_AGGREGATE_PATHS,
-  OVERFLOW_PATH,
-  RECENT_LIMIT,
-} from '../src/http-requests'
+import { collapsePath, HttpRequestTracker, RECENT_LIMIT } from '../src/http-requests'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -26,6 +21,34 @@ function detail(overrides: {
     },
   }
 }
+
+describe('collapsePath', () => {
+  it('truncates resource paths after the resource type', () => {
+    expect(
+      collapsePath(
+        '/signalk/v1/api/vessels/self/resources/routes/23b88b4b-a700-5c78-97cb-38565297354f',
+      ),
+    ).toBe('/signalk/v1/api/vessels/self/resources/routes')
+    expect(collapsePath('/signalk/v1/api/resources/charts/Fiji_Viti_Levu-NW/10/1016/564')).toBe(
+      '/signalk/v1/api/resources/charts',
+    )
+    expect(collapsePath('/signalk/v2/api/resources/waypoints/abc')).toBe(
+      '/signalk/v2/api/resources/waypoints',
+    )
+  })
+
+  it('leaves resource-type roots and unrelated paths alone', () => {
+    expect(collapsePath('/signalk/v1/api/resources/charts')).toBe(
+      '/signalk/v1/api/resources/charts',
+    )
+    expect(collapsePath('/signalk/v1/api/vessels/self/navigation/position')).toBe(
+      '/signalk/v1/api/vessels/self/navigation/position',
+    )
+    expect(collapsePath('/webapp/resources/charts/10/1016/564')).toBe(
+      '/webapp/resources/charts/10/1016/564',
+    )
+  })
+})
 
 describe('HttpRequestTracker', () => {
   it('records recent requests newest-first with query strings kept', () => {
@@ -93,21 +116,27 @@ describe('HttpRequestTracker', () => {
     expect(tracker.snapshot().aggregate[0]!.errorCount).toBe(2)
   })
 
-  it('lumps new paths into the overflow bucket once the aggregate map is full', () => {
+  it('collapses resource entry paths to the resource type in aggregates only', () => {
     const tracker = new HttpRequestTracker()
-    for (let i = 0; i < MAX_AGGREGATE_PATHS; i++) {
-      tracker.record(1, detail({ url: `/p/${i}` }), T0)
-    }
-    tracker.record(1, detail({ url: '/overflow-1' }), T0)
-    tracker.record(1, detail({ url: '/overflow-2', statusCode: 500 }), T0)
-    // An already-tracked path keeps updating its own row.
-    tracker.record(1, detail({ url: '/p/0' }), T0)
+    tracker.record(
+      1,
+      detail({ url: '/signalk/v1/api/resources/charts/Fiji_Viti_Levu-NW/10/1016/564' }),
+      T0,
+    )
+    tracker.record(
+      1,
+      detail({ url: '/signalk/v1/api/resources/charts/Fiji_Viti_Levu-NW/10/1016/565' }),
+      T0,
+    )
 
-    const { aggregate } = tracker.snapshot()
-    expect(aggregate).toHaveLength(MAX_AGGREGATE_PATHS + 1)
-    const overflow = aggregate.find((s) => s.path === OVERFLOW_PATH)
-    expect(overflow).toMatchObject({ count: 2, errorCount: 1 })
-    expect(aggregate.find((s) => s.path === '/p/0')?.count).toBe(2)
+    const { recent, aggregate } = tracker.snapshot()
+    expect(aggregate).toEqual([
+      expect.objectContaining({ path: '/signalk/v1/api/resources/charts', count: 2 }),
+    ])
+    expect(recent.map((r) => r.path)).toEqual([
+      '/signalk/v1/api/resources/charts/Fiji_Viti_Levu-NW/10/1016/565',
+      '/signalk/v1/api/resources/charts/Fiji_Viti_Levu-NW/10/1016/564',
+    ])
   })
 
   it('ignores entries without the expected detail shape', () => {
