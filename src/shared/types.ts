@@ -69,6 +69,8 @@ export interface HttpPathStats {
 export interface HttpRequestsResponse {
   recent: RecentHttpRequest[]
   aggregate: HttpPathStats[]
+  /** false when recording is disabled in plugin config; absent (or true) when recording */
+  enabled?: boolean
 }
 
 /**

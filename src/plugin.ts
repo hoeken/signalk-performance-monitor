@@ -7,9 +7,14 @@ import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { CaptureManager } from './capture'
 import { buildMetaDelta, buildMetricsDelta } from './deltas'
-import { HttpRequestTracker } from './http-requests'
+import { DEFAULT_AGGREGATE_LIMIT, DEFAULT_RECENT_LIMIT, HttpRequestTracker } from './http-requests'
 import { MetricsCollector } from './metrics'
-import { registerRoutes, type RouteDeps } from './routes'
+import {
+  DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS,
+  DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
+  registerRoutes,
+  type RouteDeps,
+} from './routes'
 import { ProfileStore } from './store'
 import type { RunningCapture } from './shared/types'
 
@@ -21,7 +26,12 @@ export interface PerformanceMonitorConfig {
   defaultProfileDurationSeconds: number
   maxProfileDurationSeconds: number
   samplingIntervalUs: number
+  samplingIntervalBytes: number
+  filesSampleIntervalSeconds: number
   maxStoredProfiles: number
+  httpRequestsEnabled: boolean
+  httpLatestRequestsLimit: number
+  httpAggregateRequestsLimit: number
 }
 
 export const CONFIG_DEFAULTS: PerformanceMonitorConfig = {
@@ -30,7 +40,12 @@ export const CONFIG_DEFAULTS: PerformanceMonitorConfig = {
   defaultProfileDurationSeconds: 30,
   maxProfileDurationSeconds: 120,
   samplingIntervalUs: 1000,
+  samplingIntervalBytes: DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
+  filesSampleIntervalSeconds: DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS,
   maxStoredProfiles: 5,
+  httpRequestsEnabled: true,
+  httpLatestRequestsLimit: DEFAULT_RECENT_LIMIT,
+  httpAggregateRequestsLimit: DEFAULT_AGGREGATE_LIMIT,
 }
 
 const CONFIG_SCHEMA = {
@@ -69,12 +84,48 @@ const CONFIG_SCHEMA = {
       default: CONFIG_DEFAULTS.samplingIntervalUs,
       minimum: 100,
     },
+    samplingIntervalBytes: {
+      type: 'number',
+      title: 'Memory sampling interval (bytes)',
+      description: 'Average allocated bytes between samples in a memory profile',
+      default: CONFIG_DEFAULTS.samplingIntervalBytes,
+      minimum: 1024,
+    },
+    filesSampleIntervalSeconds: {
+      type: 'number',
+      title: 'Filesystem sampling interval (seconds)',
+      description: 'How often a filesystem capture samples open files and SQLite WAL activity',
+      default: CONFIG_DEFAULTS.filesSampleIntervalSeconds,
+      minimum: 0.01,
+    },
     maxStoredProfiles: {
       type: 'number',
       title: 'Stored profiles per type',
       description: 'Older captures are deleted beyond this count',
       default: CONFIG_DEFAULTS.maxStoredProfiles,
       minimum: 1,
+    },
+    httpRequestsEnabled: {
+      type: 'boolean',
+      title: 'Enable HTTP requests recording',
+      description:
+        'Record latest and aggregate HTTP requests (the HTTP Requests tables and GET /http-requests). When off, nothing is recorded.',
+      default: CONFIG_DEFAULTS.httpRequestsEnabled,
+    },
+    httpLatestRequestsLimit: {
+      type: 'number',
+      title: 'Latest HTTP requests limit',
+      description: 'Newest requests kept for the HTTP Requests Latest tab; 0 = unlimited',
+      default: CONFIG_DEFAULTS.httpLatestRequestsLimit,
+      minimum: 0,
+    },
+    httpAggregateRequestsLimit: {
+      type: 'number',
+      title: 'Aggregate HTTP requests limit',
+      description:
+        'Per-path rows kept for the HTTP Requests Aggregate tab, least recently seen dropped first; 0 = unlimited',
+      default: CONFIG_DEFAULTS.httpAggregateRequestsLimit,
+      minimum: 0,
     },
   },
 }
@@ -178,8 +229,16 @@ export function createPlugin(app: ServerAPI): Plugin {
       collector.start()
       collector.sample() // establish a baseline so GET /metrics answers immediately
 
-      httpRequests = new HttpRequestTracker()
-      httpRequests.start()
+      // When recording is off the tracker is never created, so the
+      // PerformanceObserver never subscribes and per-request cost is zero;
+      // the routes answer with an explicit disabled response instead.
+      if (config.httpRequestsEnabled) {
+        httpRequests = new HttpRequestTracker({
+          recentLimit: config.httpLatestRequestsLimit,
+          aggregateLimit: config.httpAggregateRequestsLimit,
+        })
+        httpRequests.start()
+      }
 
       const dataDir = app.getDataDirPath()
       const store = new ProfileStore(dataDir, config.maxStoredProfiles)
@@ -205,6 +264,8 @@ export function createPlugin(app: ServerAPI): Plugin {
           defaultProfileDurationSeconds: config.defaultProfileDurationSeconds,
           maxProfileDurationSeconds: config.maxProfileDurationSeconds,
           samplingIntervalUs: config.samplingIntervalUs,
+          samplingIntervalBytes: config.samplingIntervalBytes,
+          filesSampleIntervalSeconds: config.filesSampleIntervalSeconds,
         },
       }
 

@@ -80,6 +80,13 @@ describe('HttpRequests', () => {
     expect(screen.getByText(/Waiting for request data/)).toBeInTheDocument()
   })
 
+  it('explains when recording is disabled instead of rendering the tables', () => {
+    render(<HttpRequests data={{ recent: [], aggregate: [], enabled: false }} onReset={noop} />)
+    expect(screen.getByText(/recording is turned off/)).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+  })
+
   it('lists recent requests newest-first and hides this plugin by default', () => {
     render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 

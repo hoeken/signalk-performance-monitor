@@ -281,6 +281,11 @@ export function HttpRequests({
       <div className="card-body gap-3 p-5">
         {data === null ? (
           <p className="text-sm text-base-content/60">Waiting for request data…</p>
+        ) : data.enabled === false ? (
+          <p className="text-sm text-base-content/60">
+            HTTP requests recording is turned off — enable it in the plugin configuration to see
+            latest and aggregate requests here.
+          </p>
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">

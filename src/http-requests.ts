@@ -3,19 +3,28 @@
  * metrics collector times (Node emits one per inbound request, but only while
  * observed — so like the interval metrics, this costs nothing while stopped):
  *
- *  - a ring buffer of the last `RECENT_LIMIT` requests, query strings and
- *    request headers kept (credential-bearing header values redacted)
+ *  - a ring buffer of the newest requests, query strings and request headers
+ *    kept (credential-bearing header values redacted)
  *  - cumulative per-path aggregates (count / total / max duration, errors,
  *    bytes, last seen), query strings stripped and known unbounded URL
  *    families collapsed (see `COLLAPSE_RULES`) so related hits share one row,
- *    capped at `AGGREGATE_LIMIT` rows with the least-recently-seen dropped
- *    first
+ *    with the least-recently-seen row dropped once past the row limit
+ *
+ * Both limits are configurable (plugin config), defaulting to
+ * `DEFAULT_RECENT_LIMIT` / `DEFAULT_AGGREGATE_LIMIT`; 0 disables the cap.
  */
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import type { HttpPathStats, HttpRequestsResponse, RecentHttpRequest } from './shared/types'
 
-export const RECENT_LIMIT = 200
-export const AGGREGATE_LIMIT = 1000
+export const DEFAULT_RECENT_LIMIT = 200
+export const DEFAULT_AGGREGATE_LIMIT = 1000
+
+export interface HttpRequestTrackerOptions {
+  /** Newest per-request entries kept; 0 keeps them all. */
+  recentLimit?: number
+  /** Per-path aggregate rows kept; 0 keeps them all. */
+  aggregateLimit?: number
+}
 
 /**
  * Aggregate-only path collapsing: each rule rewrites members of an unbounded
@@ -94,6 +103,13 @@ export class HttpRequestTracker {
   private observer: PerformanceObserver | null = null
   private recent: RecentHttpRequest[] = []
   private aggregate = new Map<string, HttpPathStats>()
+  private readonly recentLimit: number
+  private readonly aggregateLimit: number
+
+  constructor(options: HttpRequestTrackerOptions = {}) {
+    this.recentLimit = options.recentLimit ?? DEFAULT_RECENT_LIMIT
+    this.aggregateLimit = options.aggregateLimit ?? DEFAULT_AGGREGATE_LIMIT
+  }
 
   start(): void {
     this.observer = new PerformanceObserver((list) => {
@@ -136,7 +152,7 @@ export class HttpRequestTracker {
       ...(responseBytes === undefined ? {} : { responseBytes }),
       ...(parsed.req.headers === undefined ? {} : { requestHeaders: parsed.req.headers }),
     })
-    if (this.recent.length > RECENT_LIMIT) this.recent.shift()
+    if (this.recentLimit > 0 && this.recent.length > this.recentLimit) this.recent.shift()
 
     const queryStart = parsed.req.url.indexOf('?')
     const path = collapsePath(
@@ -146,7 +162,7 @@ export class HttpRequestTracker {
     const key = `${method} ${path}`
     let stats = this.aggregate.get(key)
     if (!stats) {
-      if (this.aggregate.size >= AGGREGATE_LIMIT) this.evictOldest()
+      if (this.aggregateLimit > 0 && this.aggregate.size >= this.aggregateLimit) this.evictOldest()
       stats = {
         method,
         path,

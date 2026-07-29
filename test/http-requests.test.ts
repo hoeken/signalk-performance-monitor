@@ -1,10 +1,10 @@
 import { createServer, get, type Server } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import {
-  AGGREGATE_LIMIT,
   collapsePath,
+  DEFAULT_AGGREGATE_LIMIT,
+  DEFAULT_RECENT_LIMIT,
   HttpRequestTracker,
-  RECENT_LIMIT,
 } from '../src/http-requests'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -83,13 +83,33 @@ describe('HttpRequestTracker', () => {
 
   it('keeps only the last requests once past the limit', () => {
     const tracker = new HttpRequestTracker()
-    for (let i = 0; i < RECENT_LIMIT + 20; i++) {
+    for (let i = 0; i < DEFAULT_RECENT_LIMIT + 20; i++) {
       tracker.record(1, detail({ url: `/req/${i}` }), T0 + i)
     }
     const { recent } = tracker.snapshot()
-    expect(recent).toHaveLength(RECENT_LIMIT)
-    expect(recent[0]!.path).toBe(`/req/${RECENT_LIMIT + 19}`)
-    expect(recent[RECENT_LIMIT - 1]!.path).toBe('/req/20')
+    expect(recent).toHaveLength(DEFAULT_RECENT_LIMIT)
+    expect(recent[0]!.path).toBe(`/req/${DEFAULT_RECENT_LIMIT + 19}`)
+    expect(recent[DEFAULT_RECENT_LIMIT - 1]!.path).toBe('/req/20')
+  })
+
+  it('honours a configured recent limit, with 0 meaning unlimited', () => {
+    const capped = new HttpRequestTracker({ recentLimit: 5 })
+    for (let i = 0; i < 10; i++) {
+      capped.record(1, detail({ url: `/req/${i}` }), T0 + i)
+    }
+    expect(capped.snapshot().recent.map((r) => r.path)).toEqual([
+      '/req/9',
+      '/req/8',
+      '/req/7',
+      '/req/6',
+      '/req/5',
+    ])
+
+    const unlimited = new HttpRequestTracker({ recentLimit: 0 })
+    for (let i = 0; i < DEFAULT_RECENT_LIMIT + 20; i++) {
+      unlimited.record(1, detail({ url: `/req/${i}` }), T0 + i)
+    }
+    expect(unlimited.snapshot().recent).toHaveLength(DEFAULT_RECENT_LIMIT + 20)
   })
 
   it('aggregates by method and path with query strings stripped', () => {
@@ -154,18 +174,33 @@ describe('HttpRequestTracker', () => {
 
   it('caps aggregate rows, evicting the oldest lastSeen when a new path arrives', () => {
     const tracker = new HttpRequestTracker()
-    for (let i = 0; i < AGGREGATE_LIMIT; i++) {
+    for (let i = 0; i < DEFAULT_AGGREGATE_LIMIT; i++) {
       tracker.record(1, detail({ url: `/agg/${i}` }), T0 + i)
     }
     // Refresh the first path so /agg/1 becomes the least-recently-seen row.
-    tracker.record(1, detail({ url: '/agg/0' }), T0 + AGGREGATE_LIMIT)
-    tracker.record(1, detail({ url: '/agg/new' }), T0 + AGGREGATE_LIMIT + 1)
+    tracker.record(1, detail({ url: '/agg/0' }), T0 + DEFAULT_AGGREGATE_LIMIT)
+    tracker.record(1, detail({ url: '/agg/new' }), T0 + DEFAULT_AGGREGATE_LIMIT + 1)
 
     const { aggregate } = tracker.snapshot()
-    expect(aggregate).toHaveLength(AGGREGATE_LIMIT)
+    expect(aggregate).toHaveLength(DEFAULT_AGGREGATE_LIMIT)
     expect(aggregate.find((s) => s.path === '/agg/1')).toBeUndefined()
     expect(aggregate.find((s) => s.path === '/agg/0')?.count).toBe(2)
     expect(aggregate.find((s) => s.path === '/agg/new')?.count).toBe(1)
+  })
+
+  it('honours a configured aggregate limit, with 0 meaning unlimited', () => {
+    const capped = new HttpRequestTracker({ aggregateLimit: 3 })
+    for (let i = 0; i < 5; i++) {
+      capped.record(1, detail({ url: `/agg/${i}` }), T0 + i)
+    }
+    const { aggregate } = capped.snapshot()
+    expect(aggregate.map((s) => s.path).sort()).toEqual(['/agg/2', '/agg/3', '/agg/4'])
+
+    const unlimited = new HttpRequestTracker({ aggregateLimit: 0 })
+    for (let i = 0; i < DEFAULT_AGGREGATE_LIMIT + 5; i++) {
+      unlimited.record(1, detail({ url: `/agg/${i}` }), T0 + i)
+    }
+    expect(unlimited.snapshot().aggregate).toHaveLength(DEFAULT_AGGREGATE_LIMIT + 5)
   })
 
   it('counts 4xx/5xx responses as errors', () => {

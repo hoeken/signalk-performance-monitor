@@ -36,7 +36,8 @@ modifications, no changes to other plugins.**
   status, duration, response size, request headers with credential values redacted)
   plus cumulative per-path aggregates (request count, average/max/total duration,
   errors, bytes, last seen), capped at 1000 paths with the least-recently-seen
-  dropped first — sortable, searchable tables in the webapp.
+  dropped first — both limits configurable (0 = unlimited), and recording can be
+  switched off entirely — sortable, searchable tables in the webapp.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
   per-plugin table with share bars and expandable top functions, file activity reports
@@ -86,7 +87,7 @@ function names. Base: `/plugins/signalk-performance-monitor`.
 | Method | Route                 | Description                                                                                   |
 | ------ | --------------------- | --------------------------------------------------------------------------------------------- |
 | GET    | `/metrics`            | Current metrics snapshot (JSON)                                                               |
-| GET    | `/http-requests`      | Last 200 requests + cumulative per-path aggregates                                            |
+| GET    | `/http-requests`      | Latest requests + cumulative per-path aggregates                                              |
 | POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running      |
 | POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`                   |
 | POST   | `/files-profile`      | Start file activity capture `{ duration?, sampleIntervalSeconds? }` → `{ id }`; 501 off-Linux |
@@ -128,14 +129,19 @@ the total are pruned (their cost stays in the ancestors' totals).
 
 ## Configuration
 
-| Option                          | Default | Description                                      |
-| ------------------------------- | ------- | ------------------------------------------------ |
-| `publishIntervalSeconds`        | 5       | Metrics sampling/publishing interval             |
-| `publishDeltas`                 | true    | Emit Signal K deltas (off → webapp/HTTP only)    |
-| `defaultProfileDurationSeconds` | 30      | Capture duration when none is given              |
-| `maxProfileDurationSeconds`     | 120     | Hard cap for a single capture                    |
-| `samplingIntervalUs`            | 1000    | CPU profiler sampling interval                   |
-| `maxStoredProfiles`             | 5       | Stored captures per type; older ones are deleted |
+| Option                          | Default | Description                                                      |
+| ------------------------------- | ------- | ---------------------------------------------------------------- |
+| `publishIntervalSeconds`        | 5       | Metrics sampling/publishing interval                             |
+| `publishDeltas`                 | true    | Emit Signal K deltas (off → webapp/HTTP only)                    |
+| `defaultProfileDurationSeconds` | 30      | Capture duration when none is given                              |
+| `maxProfileDurationSeconds`     | 120     | Hard cap for a single capture                                    |
+| `samplingIntervalUs`            | 1000    | CPU profiler sampling interval (µs)                              |
+| `samplingIntervalBytes`         | 32768   | Memory profiler sampling interval (avg bytes between samples)    |
+| `filesSampleIntervalSeconds`    | 0.1     | Filesystem capture sampling interval (seconds)                   |
+| `maxStoredProfiles`             | 5       | Stored captures per type; older ones are deleted                 |
+| `httpRequestsEnabled`           | true    | Record HTTP requests (Latest + Aggregate tables)                 |
+| `httpLatestRequestsLimit`       | 200     | Newest HTTP requests kept (Latest tab); 0 = unlimited            |
+| `httpAggregateRequestsLimit`    | 1000    | Per-path HTTP aggregate rows kept (Aggregate tab); 0 = unlimited |
 
 ## How attribution works
 

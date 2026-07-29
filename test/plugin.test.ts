@@ -126,6 +126,27 @@ describe('plugin lifecycle', () => {
     expect(stopped.status).toBe(503)
   })
 
+  it('serves /http-requests as disabled when recording is turned off', async () => {
+    const plugin = createPlugin(mock.api)
+    const app = express()
+    app.use(express.json())
+    const router = express.Router()
+    plugin.registerWithRouter?.(router)
+    app.use(router)
+
+    plugin.start({ httpRequestsEnabled: false }, () => undefined)
+    try {
+      const res = await request(app).get('/http-requests')
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ recent: [], aggregate: [], enabled: false })
+
+      const reset = await request(app).delete('/http-requests')
+      expect(reset.status).toBe(204)
+    } finally {
+      plugin.stop()
+    }
+  })
+
   it('runs a real end-to-end capture through the HTTP API', async () => {
     const plugin = createPlugin(mock.api)
     const app = express()

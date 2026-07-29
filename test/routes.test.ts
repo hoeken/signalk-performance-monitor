@@ -165,6 +165,10 @@ describe('HTTP routes', () => {
         defaultProfileDurationSeconds: 30,
         maxProfileDurationSeconds: 120,
         samplingIntervalUs: 1000,
+        // Deliberately non-default values, so these tests prove the
+        // configured intervals (not the built-in defaults) flow through.
+        samplingIntervalBytes: 16384,
+        filesSampleIntervalSeconds: 0.25,
       },
     }
     app = express()
@@ -194,6 +198,20 @@ describe('HTTP routes', () => {
     const res = await request(app).delete('/http-requests')
     expect(res.status).toBe(204)
     expect(httpRequestsReset).toHaveBeenCalledTimes(1)
+  })
+
+  it('GET /http-requests answers empty with enabled=false when recording is off', async () => {
+    deps!.httpRequests = null
+    const res = await request(app).get('/http-requests')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ recent: [], aggregate: [], enabled: false })
+  })
+
+  it('DELETE /http-requests is a no-op 204 when recording is off', async () => {
+    deps!.httpRequests = null
+    const res = await request(app).delete('/http-requests')
+    expect(res.status).toBe(204)
+    expect(httpRequestsReset).not.toHaveBeenCalled()
   })
 
   it('answers 503 before the plugin has started', async () => {
@@ -246,14 +264,14 @@ describe('HTTP routes', () => {
     const res = await request(app).post('/heap-profile').send({ duration: 15 })
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ id: 'heap-fake' })
-    expect(captures.heapCalls).toEqual([{ durationSeconds: 15, samplingIntervalBytes: 32768 }])
+    expect(captures.heapCalls).toEqual([{ durationSeconds: 15, samplingIntervalBytes: 16384 }])
   })
 
   it('POST /files-profile starts a file activity capture with defaults', async () => {
     const res = await request(app).post('/files-profile').send({})
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ id: 'files-fake' })
-    expect(captures.filesCalls).toEqual([{ durationSeconds: 30, sampleIntervalSeconds: 0.1 }])
+    expect(captures.filesCalls).toEqual([{ durationSeconds: 30, sampleIntervalSeconds: 0.25 }])
   })
 
   it('POST /files-profile honours duration and sampleIntervalSeconds', async () => {
@@ -297,7 +315,7 @@ describe('HTTP routes', () => {
         raw: profile,
         options: {
           samplingIntervalUs: 1000,
-          samplingIntervalBytes: 32768,
+          samplingIntervalBytes: 16384,
           filename: 'cpu-2026-07-01T00-00-00-000Z.json',
         },
       },

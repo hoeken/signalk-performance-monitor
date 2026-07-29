@@ -28,6 +28,8 @@ import type {
   RunningCapture,
 } from './shared/types'
 
+// Config defaults for the sampling intervals (plugin config can override,
+// and every capture request can override the configured value in turn).
 export const DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES = 32768
 // File captures are on-demand and bounded, so sample fast: 100ms catches
 // files opened and closed between coarser samples and gives mtime-churn
@@ -60,11 +62,14 @@ export interface RouteOptions {
   defaultProfileDurationSeconds: number
   maxProfileDurationSeconds: number
   samplingIntervalUs: number
+  samplingIntervalBytes: number
+  filesSampleIntervalSeconds: number
 }
 
 export interface RouteDeps {
   metrics: { latest(): MetricsSnapshot | null }
-  httpRequests: { snapshot(): HttpRequestsResponse; reset(): void }
+  /** null when request recording is disabled in plugin config. */
+  httpRequests: { snapshot(): HttpRequestsResponse; reset(): void } | null
   captures: CaptureController
   store: ProfileReader
   options: RouteOptions
@@ -112,6 +117,11 @@ export function registerRoutes(
   router.get(
     '/http-requests',
     wrap((deps, _req, res) => {
+      if (!deps.httpRequests) {
+        const disabled: HttpRequestsResponse = { recent: [], aggregate: [], enabled: false }
+        res.json(disabled)
+        return
+      }
       res.json(deps.httpRequests.snapshot())
     }),
   )
@@ -119,7 +129,7 @@ export function registerRoutes(
   router.delete(
     '/http-requests',
     wrap((deps, _req, res) => {
-      deps.httpRequests.reset()
+      deps.httpRequests?.reset()
       res.status(204).end()
     }),
   )
@@ -155,7 +165,7 @@ export function registerRoutes(
       if (duration === null) return
       const samplingIntervalBytes = validatePositiveNumber(
         body.samplingIntervalBytes,
-        DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
+        deps.options.samplingIntervalBytes,
         'samplingIntervalBytes',
         res,
       )
@@ -178,7 +188,7 @@ export function registerRoutes(
       if (duration === null) return
       const sampleIntervalSeconds = validatePositiveNumber(
         body.sampleIntervalSeconds,
-        DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS,
+        deps.options.filesSampleIntervalSeconds,
         'sampleIntervalSeconds',
         res,
       )
@@ -212,7 +222,7 @@ export function registerRoutes(
       try {
         const id = await deps.captures.importProfile(raw, {
           samplingIntervalUs: deps.options.samplingIntervalUs,
-          samplingIntervalBytes: DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
+          samplingIntervalBytes: deps.options.samplingIntervalBytes,
           filename,
         })
         res.json({ id })

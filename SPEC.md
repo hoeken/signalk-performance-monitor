@@ -71,10 +71,10 @@ Notes:
 
 `HttpRequestTracker` (`src/http-requests.ts`) subscribes a second observer to the same `'http'` entries and keeps, in memory only (reset on plugin restart):
 
-- a ring buffer of the last 100 requests — ISO end timestamp, method, path _with_ query string, status code, duration (ms), and response `Content-Length` when the response declared one (streamed/chunked responses don't);
-- cumulative per-`method + path` aggregates with query strings stripped — request count, total/max duration (average is derived client-side), error count (status ≥ 400), summed response bytes, and last-seen timestamp. The map is capped at 500 distinct keys; once full, new paths accumulate under a single `(other)` row so unbounded URL spaces (ids in paths, scanners) can't grow memory.
+- a ring buffer of the newest requests (`httpLatestRequestsLimit`, default 200, 0 = unlimited) — ISO end timestamp, method, path _with_ query string, status code, duration (ms), request headers (credential-bearing values redacted), and response `Content-Length` when the response declared one (streamed/chunked responses don't);
+- cumulative per-`method + path` aggregates with query strings stripped and known unbounded URL families (resource entry ids, chart tile coordinates) collapsed to their root — request count, total/max duration (average is derived client-side), error count (status ≥ 400), summed response bytes, and last-seen timestamp. The map is capped at `httpAggregateRequestsLimit` distinct keys (default 1000, 0 = unlimited); once full, the least-recently-seen row is evicted to make room, so unbounded URL spaces (ids in paths, scanners) can't grow memory.
 
-Both are served by `GET /http-requests` (shape: `HttpRequestsResponse` in `src/shared/types.ts`, recent entries newest-first).
+Both are served by `GET /http-requests` (shape: `HttpRequestsResponse` in `src/shared/types.ts`, recent entries newest-first). Recording can be turned off entirely (`httpRequestsEnabled`, default true): the tracker is then never created — the observer never subscribes, so per-request cost is zero — and the route answers `{ recent: [], aggregate: [], enabled: false }`, which the webapp explains with a disabled note instead of empty tables.
 
 ## Feature 2: On-demand CPU profiling
 
@@ -181,11 +181,16 @@ Defined in `src/plugin.ts` with titles, descriptions, and minimums; defaults:
   "defaultProfileDurationSeconds": { "type": "number", "default": 30, "minimum": 1 },
   "maxProfileDurationSeconds": { "type": "number", "default": 120, "minimum": 1 },
   "samplingIntervalUs": { "type": "number", "default": 1000, "minimum": 100 },
-  "maxStoredProfiles": { "type": "number", "default": 5, "minimum": 1 }
+  "samplingIntervalBytes": { "type": "number", "default": 32768, "minimum": 1024 },
+  "filesSampleIntervalSeconds": { "type": "number", "default": 0.1, "minimum": 0.01 },
+  "maxStoredProfiles": { "type": "number", "default": 5, "minimum": 1 },
+  "httpRequestsEnabled": { "type": "boolean", "default": true },
+  "httpLatestRequestsLimit": { "type": "number", "default": 200, "minimum": 0 },
+  "httpAggregateRequestsLimit": { "type": "number", "default": 1000, "minimum": 0 }
 }
 ```
 
-`maxStoredProfiles` applies per profile type (5 CPU + 5 heap). The heap sampling interval has no config entry; it defaults to 32768 bytes and is overridable per request.
+`maxStoredProfiles` applies per profile type (5 CPU + 5 heap + 5 files). The memory (heap) and filesystem sampling intervals default from config (`samplingIntervalBytes`, `filesSampleIntervalSeconds`) and remain overridable per capture request. The HTTP request limits (`httpLatestRequestsLimit` newest entries, `httpAggregateRequestsLimit` per-path rows) treat 0 as unlimited, and `httpRequestsEnabled: false` turns request recording off entirely (see Feature 1).
 
 ## Webapp
 
