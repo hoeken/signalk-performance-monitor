@@ -1,3 +1,13 @@
+# v1.4.0
+
+- Live metric tiles are color-coded green/orange/red by classic Node health thresholds — loop delay p99 at 50/100 ms, the conventional 70%/90% utilization bands for ELU and CPU, GC pause time at 5%/10% of the publish interval, heap against the ~1.5 GB default old-space limit, and HTTP p99 per Apdex (0.5 s / 2 s). Status never rides on hue alone: orange values carry a triangle icon, red an octagon, plus screen-reader warning/critical text, and all colors are contrast-checked against both themes
+- New plugin config options with the previous hardcoded values as defaults: memory profiler sampling interval (`samplingIntervalBytes`), filesystem capture sample interval (`filesSampleIntervalSeconds`), HTTP table caps (`httpLatestRequestsLimit` / `httpAggregateRequestsLimit`, 0 = unlimited), and `httpRequestsEnabled` to switch per-request tracking off entirely — when disabled the PerformanceObserver never subscribes so per-request cost is zero, and the webapp shows a "recording is turned off" note
+- HTTP request tracking upgrades: the recent-requests buffer grows from 100 to 200 and records request headers behind a per-row inspect toggle, a Reset button clears latest and aggregate tracking, and resource entry/tile paths (charts, routes, waypoints…) collapse to their resource type so they no longer flood the aggregate table
+- The aggregate HTTP table is capped at 1000 distinct method+path rows (up from 500), evicting the least-recently-seen row when a new path arrives at capacity — so a scanner walking random URLs can't grow the map for the life of the server, while steady-state traffic to known paths pays nothing
+- HTTP table styling: methods render as soft colored pills, status codes are color-coded by hundred-block (2xx green, 3xx blue, 4xx amber, 5xx red), and the Errors column sits next to Requests on the aggregate tab
+- "File profiling" is renamed to "filesystem profiling" across the UI, plugin status, and docs, and the stored profiles list now renders profile types as soft color-coded badges (CPU violet, Memory blue, Filesystem green)
+- CI fixes: test fixtures no longer hardcode `/home` paths, proc-layout symlink tests are skipped on Windows, and webapp tests get a longer timeout under QEMU emulation; new app-store screenshots
+
 # v1.3.0
 
 - Byte-accurate disk I/O metrics: `performance.disk.readRate/writeRate` now report true bytes per second from `/proc/self/io` (the kernel's count of bytes the process caused to hit storage) instead of 512-byte block counts, with the block-count estimate kept as a fallback for non-Linux hosts; delta units metadata, webapp tiles, and glossary updated to match

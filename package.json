@@ -1,6 +1,6 @@
 {
   "name": "signalk-performance-monitor",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Always-on event-loop metrics and on-demand CPU/allocation profiling for Signal K server",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
