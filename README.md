@@ -35,7 +35,8 @@ modifications, no changes to other plugins.**
 - **HTTP request tracking**: the last 200 requests (method, path with query string,
   status, duration, response size, request headers with credential values redacted)
   plus cumulative per-path aggregates (request count, average/max/total duration,
-  errors, bytes) — sortable, searchable tables in the webapp.
+  errors, bytes, last seen), capped at 1000 paths with the least-recently-seen
+  dropped first — sortable, searchable tables in the webapp.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
   per-plugin table with share bars and expandable top functions, file activity reports

@@ -6,13 +6,16 @@
  *  - a ring buffer of the last `RECENT_LIMIT` requests, query strings and
  *    request headers kept (credential-bearing header values redacted)
  *  - cumulative per-path aggregates (count / total / max duration, errors,
- *    bytes), query strings stripped and known unbounded URL families
- *    collapsed (see `COLLAPSE_RULES`) so related hits share one row
+ *    bytes, last seen), query strings stripped and known unbounded URL
+ *    families collapsed (see `COLLAPSE_RULES`) so related hits share one row,
+ *    capped at `AGGREGATE_LIMIT` rows with the least-recently-seen dropped
+ *    first
  */
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import type { HttpPathStats, HttpRequestsResponse, RecentHttpRequest } from './shared/types'
 
 export const RECENT_LIMIT = 200
+export const AGGREGATE_LIMIT = 1000
 
 /**
  * Aggregate-only path collapsing: each rule rewrites members of an unbounded
@@ -141,15 +144,20 @@ export class HttpRequestTracker {
     )
     const method = parsed.req.method
     const key = `${method} ${path}`
-    const stats = this.aggregate.get(key) ?? {
-      method,
-      path,
-      count: 0,
-      totalMs: 0,
-      maxMs: 0,
-      errorCount: 0,
-      totalBytes: 0,
-      lastSeen: timestamp,
+    let stats = this.aggregate.get(key)
+    if (!stats) {
+      if (this.aggregate.size >= AGGREGATE_LIMIT) this.evictOldest()
+      stats = {
+        method,
+        path,
+        count: 0,
+        totalMs: 0,
+        maxMs: 0,
+        errorCount: 0,
+        totalBytes: 0,
+        lastSeen: timestamp,
+      }
+      this.aggregate.set(key, stats)
     }
     stats.count += 1
     stats.totalMs = roundMs(stats.totalMs + durationMs)
@@ -157,7 +165,19 @@ export class HttpRequestTracker {
     if (parsed.res.statusCode >= 400) stats.errorCount += 1
     if (responseBytes !== undefined) stats.totalBytes += responseBytes
     stats.lastSeen = timestamp
-    this.aggregate.set(key, stats)
+  }
+
+  /** Drop the aggregate row with the oldest lastSeen to make room for a new one. */
+  private evictOldest(): void {
+    let oldestKey: string | undefined
+    let oldestSeen = ''
+    for (const [key, stats] of this.aggregate) {
+      if (oldestKey === undefined || stats.lastSeen < oldestSeen) {
+        oldestKey = key
+        oldestSeen = stats.lastSeen
+      }
+    }
+    if (oldestKey !== undefined) this.aggregate.delete(oldestKey)
   }
 
   /** Recent requests newest-first, plus all per-path aggregates. */

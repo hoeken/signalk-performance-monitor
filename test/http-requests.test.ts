@@ -1,6 +1,11 @@
 import { createServer, get, type Server } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { collapsePath, HttpRequestTracker, RECENT_LIMIT } from '../src/http-requests'
+import {
+  AGGREGATE_LIMIT,
+  collapsePath,
+  HttpRequestTracker,
+  RECENT_LIMIT,
+} from '../src/http-requests'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -145,6 +150,22 @@ describe('HttpRequestTracker', () => {
     const tracker = new HttpRequestTracker()
     tracker.record(1, detail({ url: '/a' }), T0)
     expect(tracker.snapshot().recent[0]).not.toHaveProperty('requestHeaders')
+  })
+
+  it('caps aggregate rows, evicting the oldest lastSeen when a new path arrives', () => {
+    const tracker = new HttpRequestTracker()
+    for (let i = 0; i < AGGREGATE_LIMIT; i++) {
+      tracker.record(1, detail({ url: `/agg/${i}` }), T0 + i)
+    }
+    // Refresh the first path so /agg/1 becomes the least-recently-seen row.
+    tracker.record(1, detail({ url: '/agg/0' }), T0 + AGGREGATE_LIMIT)
+    tracker.record(1, detail({ url: '/agg/new' }), T0 + AGGREGATE_LIMIT + 1)
+
+    const { aggregate } = tracker.snapshot()
+    expect(aggregate).toHaveLength(AGGREGATE_LIMIT)
+    expect(aggregate.find((s) => s.path === '/agg/1')).toBeUndefined()
+    expect(aggregate.find((s) => s.path === '/agg/0')?.count).toBe(2)
+    expect(aggregate.find((s) => s.path === '/agg/new')?.count).toBe(1)
   })
 
   it('counts 4xx/5xx responses as errors', () => {
