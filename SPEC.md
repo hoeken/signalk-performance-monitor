@@ -193,7 +193,7 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 
 - **Stack:** React 18, TypeScript, Vite. Runtime dependencies are React + ReactDOM plus the headless TanStack table core for the request tables (all bundled at build time — nothing beyond `dist/` + `public/` ships in the package); no charting library, no heavyweight UI frameworks.
 - **Live metrics tiles** (`MetricsTiles`) — loop delay p50/p99/max, ELU, GC pause, heap, RSS, CPU, HTTP request rate + duration p50/p99/max, disk read/write byte rates, involuntary context switches, major page faults — polled from `GET /metrics` every 2s.
-- **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU", "Profile Memory", and "Profile Files" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
+- **Profiling controls** (`ProfileControls`) — duration selector (10/30/60/120s) with separate "Profile CPU", "Profile Memory", and "Profile Filesystem" buttons; while a capture runs it shows type, seconds remaining, and a progress bar. Profile list polling runs at 5s normally and speeds up to 1s during a capture.
 - **Profile list** (`ProfileList`) — stored captures with select, raw download, and delete.
 - **HTTP requests** (`HttpRequests`) — tabbed card in its own section below Profiling, polled from `GET /http-requests` every 5s: the last 100 requests and the per-path aggregates as sortable (click a header), searchable tables via the shared `DataTable` component (headless `@tanstack/react-table`), styled like every other table. A default-on "Hide this plugin" toggle filters out the webapp's own polling, which would otherwise dominate the latest-requests view.
 - **Report view** (`ReportView`) — per-plugin table (bucket, %, bar) rendering both CPU and heap reports, with expandable top-functions per bucket. File activity reports render through `FilesReportView` in two tabs: **Summary** (process totals, the write-attribution table with the `(unattributed)` honesty row, SQLite database stats — commits/s, WAL frames, checkpoints, batching notes — and the changed-files table, idle open files folded into a count) and **Individual Files** (every watched file with all of its stats in a sortable, searchable table via the shared `DataTable`, with a Download button exporting the current view as JSON; on the Summary tab, Download exports the full report).
@@ -204,7 +204,7 @@ React single-page app (`webapp/`), built with Vite into static assets under `pub
 
 - `start(options)`: merge options over defaults, start the metrics collector (plus a baseline sample), create the profile store and capture manager, emit the units meta delta, start the publish interval.
 - `stop()`: clear timers, abort any in-flight capture (discarding it) and disconnect the inspector session, stop the collector, set status "Stopped". Routes answer 503 afterward.
-- `setPluginStatus`: idle → "Monitoring (loop p99: Xms)" (refreshed each publish); capturing → "Profiling: Ns remaining" / "Heap profiling: Ns remaining" / "File profiling: Ns remaining", ticked every second.
+- `setPluginStatus`: idle → "Monitoring (loop p99: Xms)" (refreshed each publish); capturing → "Profiling: Ns remaining" / "Heap profiling: Ns remaining" / "Filesystem profiling: Ns remaining", ticked every second.
 
 ## Security considerations
 

@@ -111,7 +111,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(await screen.findByRole('button', { name: 'Profile Files' }))
+    await user.click(await screen.findByRole('button', { name: 'Profile Filesystem' }))
 
     const postCall = fetchMock.mock.calls.find(
       ([target, init]) =>
@@ -121,8 +121,8 @@ describe('App', () => {
     expect(postCall).toBeDefined()
     expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({ duration: 30 })
 
-    expect(await screen.findByText(/File profiling: 30s remaining/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Profile Files' })).not.toBeInTheDocument()
+    expect(await screen.findByText(/Filesystem profiling: 30s remaining/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Profile Filesystem' })).not.toBeInTheDocument()
   })
 
   it('toggles the per-plugin report for a stored profile', async () => {

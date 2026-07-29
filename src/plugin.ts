@@ -140,7 +140,7 @@ export function createPlugin(app: ServerAPI): Plugin {
           status.type === 'heap'
             ? 'Heap profiling'
             : status.type === 'files'
-              ? 'File profiling'
+              ? 'Filesystem profiling'
               : 'Profiling'
         app.setPluginStatus(`${kind}: ${status.remainingSeconds}s remaining`)
       }

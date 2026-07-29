@@ -22,7 +22,7 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
       running.type === 'heap'
         ? 'Memory profiling'
         : running.type === 'files'
-          ? 'File profiling'
+          ? 'Filesystem profiling'
           : 'CPU profiling'
     return (
       <div className="flex w-full items-center gap-3">
@@ -75,7 +75,7 @@ export function ProfileControls({ running, onStart, onUpload }: ProfileControlsP
         className="btn btn-sm btn-primary btn-outline"
         onClick={() => onStart('files', duration)}
       >
-        Profile Files
+        Profile Filesystem
       </button>
       <button
         type="button"
