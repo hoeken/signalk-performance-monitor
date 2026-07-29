@@ -244,7 +244,14 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id']
 
-export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
+export function HttpRequests({
+  data,
+  onReset,
+}: {
+  data: HttpRequestsResponse | null
+  /** Clears the server-side tracking behind both tabs (latest and aggregate). */
+  onReset: () => Promise<void>
+}) {
   const [tab, setTab] = useState<TabId>('recent')
   const [search, setSearch] = useState('')
   const [hideSelf, setHideSelf] = useState(true)
@@ -299,6 +306,13 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
                 >
                   Download
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-error btn-outline"
+                  onClick={() => void onReset()}
+                >
+                  Reset
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -347,7 +361,7 @@ export function HttpRequests({ data }: { data: HttpRequestsResponse | null }) {
             <p className="text-xs text-base-content/60">
               {tab === 'recent'
                 ? 'The last 200 requests handled by the server (all consumers, not just this webapp). The magnifier expands a request’s headers. Size is the response Content-Length; streamed responses don’t declare one.'
-                : 'Cumulative per path since the plugin started — query strings stripped, and resource requests (chart tiles, routes, …) grouped under their resource type. Duration and Size are per-request averages. Click a column header to sort.'}
+                : 'Cumulative per path since the plugin started or the last reset — query strings stripped, and resource requests (chart tiles, routes, …) grouped under their resource type. Duration and Size are per-request averages. Click a column header to sort.'}
             </p>
           </>
         )}

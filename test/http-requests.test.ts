@@ -194,6 +194,18 @@ describe('HttpRequestTracker', () => {
     expect(tracker.snapshot()).toEqual({ recent: [], aggregate: [] })
   })
 
+  it('clears recorded data on reset but keeps recording', () => {
+    const tracker = new HttpRequestTracker()
+    tracker.record(1, detail({ url: '/a' }), T0)
+    tracker.reset()
+    expect(tracker.snapshot()).toEqual({ recent: [], aggregate: [] })
+
+    tracker.record(2, detail({ url: '/b' }), T0 + 1000)
+    const { recent, aggregate } = tracker.snapshot()
+    expect(recent.map((entry) => entry.path)).toEqual(['/b'])
+    expect(aggregate.map((entry) => entry.count)).toEqual([1])
+  })
+
   it('observes real inbound requests while started', async () => {
     const tracker = new HttpRequestTracker()
     tracker.start()

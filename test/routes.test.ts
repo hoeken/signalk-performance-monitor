@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import request from 'supertest'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CaptureBusyError,
   FileCaptureUnsupportedError,
@@ -149,14 +149,16 @@ describe('HTTP routes', () => {
   let deps: RouteDeps | null
   let app: express.Express
   const errors: string[] = []
+  const httpRequestsReset = vi.fn()
 
   beforeEach(async () => {
+    httpRequestsReset.mockClear()
     dir = await fs.mkdtemp(path.join(tmpdir(), 'skpm-routes-'))
     store = new ProfileStore(dir, 5)
     captures = new FakeCaptures()
     deps = {
       metrics: { latest: () => SNAPSHOT },
-      httpRequests: { snapshot: () => HTTP_REQUESTS },
+      httpRequests: { snapshot: () => HTTP_REQUESTS, reset: httpRequestsReset },
       captures,
       store,
       options: {
@@ -186,6 +188,12 @@ describe('HTTP routes', () => {
     const res = await request(app).get('/http-requests')
     expect(res.status).toBe(200)
     expect(res.body).toEqual(HTTP_REQUESTS)
+  })
+
+  it('DELETE /http-requests resets the tracker', async () => {
+    const res = await request(app).delete('/http-requests')
+    expect(res.status).toBe(204)
+    expect(httpRequestsReset).toHaveBeenCalledTimes(1)
   })
 
   it('answers 503 before the plugin has started', async () => {

@@ -13,6 +13,7 @@ import {
   getMetrics,
   getProfiles,
   getReport,
+  resetHttpRequests,
   startProfile,
   uploadProfile,
 } from './api'
@@ -95,6 +96,18 @@ export function App() {
     )
     return () => clearInterval(timer)
   }, [refreshProfiles, isRunning])
+
+  // Clear the server-side tracking, then refetch so the tables empty
+  // immediately instead of on the next poll tick.
+  const handleHttpRequestsReset = async () => {
+    try {
+      await resetHttpRequests()
+      setHttpRequests(await getHttpRequests())
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const handleStart = async (type: ProfileType, durationSeconds: number) => {
     try {
@@ -212,7 +225,7 @@ export function App() {
           <h2 id="http-requests-heading" className="text-sm font-semibold text-base-content/60">
             HTTP Requests
           </h2>
-          <HttpRequests data={httpRequests} />
+          <HttpRequests data={httpRequests} onReset={handleHttpRequestsReset} />
         </section>
 
         <section aria-labelledby="documentation-heading" className="flex flex-col gap-2">

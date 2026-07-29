@@ -14,6 +14,8 @@ function blobText(blob: Blob): Promise<string> {
   })
 }
 
+const noop = () => Promise.resolve()
+
 function rowTexts(): string[][] {
   const [table] = screen.getAllByRole('table')
   return within(table!)
@@ -45,7 +47,7 @@ describe('HttpRequests', () => {
     ) {
       downloadName = this.download
     })
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     await user.click(screen.getByRole('button', { name: 'Download' }))
     expect(downloadName).toMatch(/^http-requests-latest-\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/)
@@ -64,13 +66,22 @@ describe('HttpRequests', () => {
     expect(json.map((row) => row.path)).toEqual(['/signalk/v1/api/vessels/self/steering/autopilot'])
   })
 
+  it('invokes the reset handler from the Reset button', async () => {
+    const user = userEvent.setup()
+    const onReset = vi.fn(() => Promise.resolve())
+    render(<HttpRequests data={httpRequestsFixture} onReset={onReset} />)
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(onReset).toHaveBeenCalledTimes(1)
+  })
+
   it('shows a waiting message before the first response arrives', () => {
-    render(<HttpRequests data={null} />)
+    render(<HttpRequests data={null} onReset={noop} />)
     expect(screen.getByText(/Waiting for request data/)).toBeInTheDocument()
   })
 
   it('lists recent requests newest-first and hides this plugin by default', () => {
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     const rows = rowTexts()
     expect(rows).toHaveLength(2)
@@ -91,7 +102,7 @@ describe('HttpRequests', () => {
 
   it('shows this plugin’s own requests when the hide toggle is off', async () => {
     const user = userEvent.setup()
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     await user.click(screen.getByRole('checkbox', { name: /Hide this plugin/ }))
     expect(rowTexts()).toHaveLength(3)
@@ -100,7 +111,7 @@ describe('HttpRequests', () => {
 
   it('filters rows through the search box', async () => {
     const user = userEvent.setup()
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     await user.type(screen.getByRole('searchbox', { name: 'Search requests' }), 'autopilot')
     const rows = rowTexts()
@@ -110,7 +121,7 @@ describe('HttpRequests', () => {
 
   it('expands a request’s headers behind the inspect toggle', async () => {
     const user = userEvent.setup()
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     const inspect = screen.getByRole('button', {
       name: 'Inspect GET /signalk/v1/api/vessels/self?depth=1',
@@ -137,7 +148,7 @@ describe('HttpRequests', () => {
 
   it('sorts by a column when its header is clicked', async () => {
     const user = userEvent.setup()
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     // Numeric columns sort descending first: slowest requests on top.
     await user.click(screen.getByRole('button', { name: /Duration/ }))
@@ -169,7 +180,7 @@ describe('HttpRequests', () => {
         durationMs,
       })),
     }
-    render(<HttpRequests data={tiers} />)
+    render(<HttpRequests data={tiers} onReset={noop} />)
 
     expect(screen.getByText('10.0 ms')).toHaveClass('text-success')
     expect(screen.getByText('30.0 ms')).toHaveClass('text-info')
@@ -194,7 +205,7 @@ describe('HttpRequests', () => {
       durationMs: 1,
       ...request,
     }))
-    render(<HttpRequests data={{ recent: requests, aggregate: [] }} />)
+    render(<HttpRequests data={{ recent: requests, aggregate: [] }} onReset={noop} />)
 
     expect(screen.getByText('GET')).toHaveClass('badge', 'badge-info', 'badge-soft')
     expect(screen.getByText('POST')).toHaveClass('badge-success')
@@ -222,7 +233,7 @@ describe('HttpRequests', () => {
         durationMs: 1,
       })),
     }
-    render(<HttpRequests data={many} />)
+    render(<HttpRequests data={many} onReset={noop} />)
 
     expect(rowTexts()).toHaveLength(15)
     expect(screen.getByText('20 rows')).toBeInTheDocument()
@@ -245,7 +256,7 @@ describe('HttpRequests', () => {
 
   it('shows per-path aggregates with computed averages on the Aggregate tab', async () => {
     const user = userEvent.setup()
-    render(<HttpRequests data={httpRequestsFixture} />)
+    render(<HttpRequests data={httpRequestsFixture} onReset={noop} />)
 
     await user.click(screen.getByRole('tab', { name: 'Aggregate' }))
     const rows = rowTexts()

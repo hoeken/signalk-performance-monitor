@@ -107,6 +107,11 @@ export class HttpRequestTracker {
   stop(): void {
     this.observer?.disconnect()
     this.observer = null
+    this.reset()
+  }
+
+  /** Drop everything recorded so far; observation (if started) continues. */
+  reset(): void {
     this.recent = []
     this.aggregate.clear()
   }

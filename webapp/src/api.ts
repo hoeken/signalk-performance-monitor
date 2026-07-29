@@ -45,6 +45,8 @@ export const getMetrics = () => request<MetricsSnapshot>('/metrics')
 
 export const getHttpRequests = () => request<HttpRequestsResponse>('/http-requests')
 
+export const resetHttpRequests = () => request<void>('/http-requests', { method: 'DELETE' })
+
 export const getProfiles = () => request<ProfileListResponse>('/profile')
 
 const START_ROUTES: Record<ProfileType, string> = {

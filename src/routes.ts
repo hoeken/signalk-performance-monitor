@@ -64,7 +64,7 @@ export interface RouteOptions {
 
 export interface RouteDeps {
   metrics: { latest(): MetricsSnapshot | null }
-  httpRequests: { snapshot(): HttpRequestsResponse }
+  httpRequests: { snapshot(): HttpRequestsResponse; reset(): void }
   captures: CaptureController
   store: ProfileReader
   options: RouteOptions
@@ -113,6 +113,14 @@ export function registerRoutes(
     '/http-requests',
     wrap((deps, _req, res) => {
       res.json(deps.httpRequests.snapshot())
+    }),
+  )
+
+  router.delete(
+    '/http-requests',
+    wrap((deps, _req, res) => {
+      deps.httpRequests.reset()
+      res.status(204).end()
     }),
   )
 
