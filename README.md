@@ -84,13 +84,18 @@ All routes are registered on the plugin router — **admin-only** under the serv
 security strategy, which is required, not optional: profiles reveal file paths and
 function names. Base: `/plugins/signalk-performance-monitor`.
 
+The full API is described by an [OpenAPI definition](src/openApi.json), browsable in
+the server's Admin UI under **Documentation → OpenAPI**.
+
 | Method | Route                 | Description                                                                                   |
 | ------ | --------------------- | --------------------------------------------------------------------------------------------- |
 | GET    | `/metrics`            | Current metrics snapshot (JSON)                                                               |
 | GET    | `/http-requests`      | Latest requests + cumulative per-path aggregates                                              |
+| DELETE | `/http-requests`      | Reset recorded requests and aggregates                                                        |
 | POST   | `/profile`            | Start CPU capture `{ duration?, samplingIntervalUs? }` → `{ id }`; 409 if one is running      |
 | POST   | `/heap-profile`       | Start allocation capture `{ duration?, samplingIntervalBytes? }` → `{ id }`                   |
 | POST   | `/files-profile`      | Start file activity capture `{ duration?, sampleIntervalSeconds? }` → `{ id }`; 501 off-Linux |
+| POST   | `/profile/upload`     | Import a previously downloaded raw profile (`?filename=` restores the id); 64 MB cap          |
 | GET    | `/profile`            | Stored profiles + status of any running capture                                               |
 | GET    | `/profile/:id/report` | Aggregated per-plugin report                                                                  |
 | GET    | `/profile/:id/raw`    | Raw profile download (`.json`)                                                                |

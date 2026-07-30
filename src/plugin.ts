@@ -9,6 +9,7 @@ import { CaptureManager } from './capture'
 import { buildMetaDelta, buildMetricsDelta } from './deltas'
 import { DEFAULT_AGGREGATE_LIMIT, DEFAULT_RECENT_LIMIT, HttpRequestTracker } from './http-requests'
 import { MetricsCollector } from './metrics'
+import openApi from './openApi.json'
 import {
   DEFAULT_FILES_SAMPLE_INTERVAL_SECONDS,
   DEFAULT_HEAP_SAMPLING_INTERVAL_BYTES,
@@ -221,6 +222,7 @@ export function createPlugin(app: ServerAPI): Plugin {
     description:
       'Event-loop health metrics and on-demand CPU/allocation profiling with per-plugin attribution',
     schema: () => CONFIG_SCHEMA,
+    getOpenApi: () => openApi,
 
     start(options: object) {
       config = { ...CONFIG_DEFAULTS, ...(options as Partial<PerformanceMonitorConfig>) }

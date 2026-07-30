@@ -64,6 +64,9 @@ describe('plugin lifecycle', () => {
     for (const [key, value] of Object.entries(CONFIG_DEFAULTS)) {
       expect(properties[key]?.default).toBe(value)
     }
+    const openApi = plugin.getOpenApi?.() as { openapi?: string; paths?: object } | undefined
+    expect(openApi?.openapi).toMatch(/^3\./)
+    expect(Object.keys(openApi?.paths ?? {}).length).toBeGreaterThan(0)
   })
 
   it('publishes meta once and metric deltas on the configured interval', async () => {

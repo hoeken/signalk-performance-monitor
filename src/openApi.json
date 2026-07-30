@@ -1,0 +1,971 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Signal K Performance Monitor API",
+    "version": "1.4.0",
+    "description": "HTTP API of the signalk-performance-monitor plugin: always-on event-loop/CPU/memory metrics, inbound HTTP request recording, and on-demand CPU/allocation/file-activity profiling with per-plugin attribution.\n\nAll routes are registered on the plugin router and are **admin-only** under the server's security strategy. This is required, not optional: profile reports reveal file paths and function names.\n\nEvery route answers `503 { \"error\": \"plugin not started\" }` until the plugin has started, and `500 { \"error\": \"internal error\" }` on unexpected failures.",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/hoeken/signalk-performance-monitor/blob/main/LICENSE"
+    }
+  },
+  "externalDocs": {
+    "description": "README",
+    "url": "https://github.com/hoeken/signalk-performance-monitor#readme"
+  },
+  "servers": [
+    {
+      "url": "/plugins/signalk-performance-monitor"
+    }
+  ],
+  "security": [{ "cookieAuth": [] }, { "bearerAuth": [] }],
+  "tags": [
+    {
+      "name": "metrics",
+      "description": "Always-on performance metrics"
+    },
+    {
+      "name": "http-requests",
+      "description": "Inbound HTTP request recording (latest requests and cumulative per-path aggregates)"
+    },
+    {
+      "name": "profiles",
+      "description": "On-demand CPU, heap-allocation, and file-activity captures and their stored reports"
+    }
+  ],
+  "paths": {
+    "/metrics": {
+      "get": {
+        "tags": ["metrics"],
+        "summary": "Current metrics snapshot",
+        "description": "The most recent metrics sample: event-loop delay percentiles, event-loop utilization, GC pause time, memory, CPU utilization, inbound HTTP rate/latency, and disk/context-switch/page-fault rates. Sampled every publish interval (plugin config, default 5 s).",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "Latest snapshot",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MetricsSnapshot" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": {
+            "description": "Plugin not started, or no metrics collected yet",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/http-requests": {
+      "get": {
+        "tags": ["http-requests"],
+        "summary": "Recorded inbound HTTP requests",
+        "description": "The newest completed inbound requests (newest first) plus cumulative per-path aggregates since plugin start. When request recording is disabled in plugin config, returns empty lists with `enabled: false`.",
+        "operationId": "getHttpRequests",
+        "responses": {
+          "200": {
+            "description": "Recent requests and per-path aggregates",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HttpRequestsResponse" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      },
+      "delete": {
+        "tags": ["http-requests"],
+        "summary": "Reset recorded HTTP requests",
+        "description": "Clears the recent-request list and the per-path aggregates. A no-op when recording is disabled.",
+        "operationId": "resetHttpRequests",
+        "responses": {
+          "204": { "description": "Recording reset" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/profile": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "List stored profiles and any running capture",
+        "operationId": "listProfiles",
+        "responses": {
+          "200": {
+            "description": "Stored profiles plus the status of a running capture, if any",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileListResponse" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      },
+      "post": {
+        "tags": ["profiles"],
+        "summary": "Start a CPU profile capture",
+        "description": "Starts a sampling CPU capture. Only one capture (of any type) runs at a time. Omitted fields fall back to the plugin config values.",
+        "operationId": "startCpuProfile",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartCpuProfileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CaptureStarted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/CaptureBusy" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/heap-profile": {
+      "post": {
+        "tags": ["profiles"],
+        "summary": "Start a heap-allocation profile capture",
+        "description": "Starts a sampling heap (allocation) capture. Only one capture (of any type) runs at a time. Omitted fields fall back to the plugin config values.",
+        "operationId": "startHeapProfile",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartHeapProfileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CaptureStarted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/CaptureBusy" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/files-profile": {
+      "post": {
+        "tags": ["profiles"],
+        "summary": "Start a file-activity capture",
+        "description": "Starts a file-activity capture: samples the process's open files and SQLite WAL activity, and attributes write volume per plugin. Requires Linux (`/proc`); answers 501 elsewhere. Only one capture (of any type) runs at a time. Omitted fields fall back to the plugin config values.",
+        "operationId": "startFilesProfile",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartFilesProfileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CaptureStarted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/CaptureBusy" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "501": {
+            "description": "File-activity capture is not supported on this platform (no `/proc`)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/profile/upload": {
+      "post": {
+        "tags": ["profiles"],
+        "summary": "Import a previously captured profile",
+        "description": "Imports a raw profile JSON — a V8 CPU profile (`.cpuprofile`), a V8 sampling heap profile (`.heapprofile`), or a files capture downloaded from this plugin — and stores it like a local capture. The profile type is detected from the content; a `filename` of the form `<id>.json` from an earlier download restores the original id and capture time. The upload is read as a raw body (the webapp sends `application/octet-stream`) and capped at 64 MB.",
+        "operationId": "uploadProfile",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "query",
+            "required": false,
+            "description": "Original filename of the uploaded profile; used to restore the profile id and infer the type",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": { "type": "string", "format": "binary" }
+            },
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile imported",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StartProfileResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Body is not valid JSON, or not a recognized profile format",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload exceeds 64 MB",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/profile/{id}/report": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "Aggregated report for a stored profile",
+        "description": "The per-plugin attribution report for a stored capture. The shape depends on the profile type (discriminated by `type`): CPU time buckets, heap allocation buckets, or file/SQLite write activity.",
+        "operationId": "getProfileReport",
+        "parameters": [{ "$ref": "#/components/parameters/ProfileId" }],
+        "responses": {
+          "200": {
+            "description": "Aggregated report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileReport" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidProfileId" },
+          "404": { "$ref": "#/components/responses/ProfileNotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/profile/{id}/raw": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "Download the raw profile",
+        "description": "The raw capture as stored: a V8 `.cpuprofile` JSON, a V8 sampling heap profile JSON, or the files-capture JSON. Served as an attachment named `<id>.json`; suitable for re-import via `POST /profile/upload` or external tools (Chrome DevTools, speedscope).",
+        "operationId": "getProfileRaw",
+        "parameters": [{ "$ref": "#/components/parameters/ProfileId" }],
+        "responses": {
+          "200": {
+            "description": "Raw profile JSON",
+            "headers": {
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"<id>.json\"`",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidProfileId" },
+          "404": { "$ref": "#/components/responses/ProfileNotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    },
+    "/profile/{id}": {
+      "delete": {
+        "tags": ["profiles"],
+        "summary": "Delete a stored profile",
+        "operationId": "deleteProfile",
+        "parameters": [{ "$ref": "#/components/parameters/ProfileId" }],
+        "responses": {
+          "204": { "description": "Profile deleted" },
+          "400": { "$ref": "#/components/responses/InvalidProfileId" },
+          "404": { "$ref": "#/components/responses/ProfileNotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/PluginNotStarted" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "JAUTHENTICATION"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "ProfileId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Profile id, e.g. `cpu-2026-07-28T10-00-00-000Z`",
+        "schema": {
+          "type": "string",
+          "pattern": "^(cpu|heap|files)-[A-Za-z0-9][A-Za-z0-9-]*$"
+        }
+      }
+    },
+    "responses": {
+      "CaptureStarted": {
+        "description": "Capture started; the profile is stored under the returned id when it completes",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/StartProfileResponse" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid request parameter (e.g. non-positive duration, or duration above the configured maximum)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "InvalidProfileId": {
+        "description": "Invalid profile id",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "ProfileNotFound": {
+        "description": "No stored profile with this id",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "CaptureBusy": {
+        "description": "Another capture is already running",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "PluginNotStarted": {
+        "description": "Plugin not started",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "StartProfileResponse": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the capture; poll `GET /profile` for completion, then fetch the report or raw profile"
+          }
+        }
+      },
+      "StartCpuProfileRequest": {
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "Capture duration in seconds; capped by the configured maximum. Defaults to the configured default duration."
+          },
+          "samplingIntervalUs": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "CPU sampling interval in microseconds (floored to an integer). Defaults to the configured value."
+          }
+        }
+      },
+      "StartHeapProfileRequest": {
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "Capture duration in seconds; capped by the configured maximum. Defaults to the configured default duration."
+          },
+          "samplingIntervalBytes": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "Average allocated bytes between samples (floored to an integer). Defaults to the configured value."
+          }
+        }
+      },
+      "StartFilesProfileRequest": {
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "Capture duration in seconds; capped by the configured maximum. Defaults to the configured default duration."
+          },
+          "sampleIntervalSeconds": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "description": "How often open files and SQLite WAL activity are sampled. Defaults to the configured value."
+          }
+        }
+      },
+      "MetricsSnapshot": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "eventLoopDelay",
+          "eventLoopUtilization",
+          "gcPauseTime",
+          "memory",
+          "cpuUtilization",
+          "http",
+          "resources"
+        ],
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "eventLoopDelay": { "$ref": "#/components/schemas/EventLoopDelayMetrics" },
+          "eventLoopUtilization": {
+            "type": "number",
+            "description": "Ratio 0–1, diffed over the last interval"
+          },
+          "gcPauseTime": {
+            "type": "number",
+            "description": "Seconds of GC pause summed over the last interval"
+          },
+          "memory": { "$ref": "#/components/schemas/MemoryMetrics" },
+          "cpuUtilization": {
+            "type": "number",
+            "description": "Ratio of process CPU time to wall time over the last interval"
+          },
+          "http": { "$ref": "#/components/schemas/HttpMetrics" },
+          "resources": { "$ref": "#/components/schemas/ResourceUsageMetrics" }
+        }
+      },
+      "EventLoopDelayMetrics": {
+        "type": "object",
+        "required": ["p50", "p99", "max"],
+        "properties": {
+          "p50": { "type": "number", "description": "Seconds" },
+          "p99": { "type": "number", "description": "Seconds" },
+          "max": { "type": "number", "description": "Seconds, reset each publish interval" }
+        }
+      },
+      "MemoryMetrics": {
+        "type": "object",
+        "required": ["heapUsed", "rss"],
+        "properties": {
+          "heapUsed": { "type": "number", "description": "Bytes" },
+          "rss": { "type": "number", "description": "Bytes" }
+        }
+      },
+      "HttpMetrics": {
+        "type": "object",
+        "required": ["requestRate", "requestDuration"],
+        "properties": {
+          "requestRate": {
+            "type": "number",
+            "description": "Inbound HTTP requests handled per second over the last interval"
+          },
+          "requestDuration": {
+            "type": "object",
+            "required": ["p50", "p99", "max"],
+            "description": "Request duration percentiles in seconds; all zero when no requests were handled",
+            "properties": {
+              "p50": { "type": "number", "description": "Seconds" },
+              "p99": { "type": "number", "description": "Seconds" },
+              "max": { "type": "number", "description": "Seconds, reset each publish interval" }
+            }
+          }
+        }
+      },
+      "ResourceUsageMetrics": {
+        "type": "object",
+        "required": [
+          "diskReadRate",
+          "diskWriteRate",
+          "involuntaryContextSwitchRate",
+          "majorPageFaultRate"
+        ],
+        "description": "Per-second rates over the last interval. Disk rates are true bytes/s from `/proc/self/io` where available (Linux); elsewhere an approximation from `process.resourceUsage()` block counts.",
+        "properties": {
+          "diskReadRate": {
+            "type": "number",
+            "description": "Bytes read from storage per second (page-cache misses only, so usually 0)"
+          },
+          "diskWriteRate": {
+            "type": "number",
+            "description": "Bytes written to storage per second"
+          },
+          "involuntaryContextSwitchRate": {
+            "type": "number",
+            "description": "Involuntary context switches per second — a CPU contention indicator"
+          },
+          "majorPageFaultRate": {
+            "type": "number",
+            "description": "Major page faults per second — a memory pressure indicator"
+          }
+        }
+      },
+      "HttpRequestsResponse": {
+        "type": "object",
+        "required": ["recent", "aggregate"],
+        "properties": {
+          "recent": {
+            "type": "array",
+            "description": "Completed inbound requests, newest first",
+            "items": { "$ref": "#/components/schemas/RecentHttpRequest" }
+          },
+          "aggregate": {
+            "type": "array",
+            "description": "Cumulative per-path stats since plugin start",
+            "items": { "$ref": "#/components/schemas/HttpPathStats" }
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "False when recording is disabled in plugin config; absent (or true) when recording"
+          }
+        }
+      },
+      "RecentHttpRequest": {
+        "type": "object",
+        "required": ["timestamp", "method", "path", "statusCode", "durationMs"],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the response finished"
+          },
+          "method": { "type": "string" },
+          "path": { "type": "string", "description": "Request path including the query string" },
+          "statusCode": { "type": "integer" },
+          "durationMs": { "type": "number", "description": "Milliseconds" },
+          "responseBytes": {
+            "type": "number",
+            "description": "Response Content-Length; absent for chunked/streamed responses"
+          },
+          "requestHeaders": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Request headers as received; authorization/cookie values are redacted"
+          }
+        }
+      },
+      "HttpPathStats": {
+        "type": "object",
+        "required": [
+          "method",
+          "path",
+          "count",
+          "totalMs",
+          "maxMs",
+          "errorCount",
+          "totalBytes",
+          "lastSeen"
+        ],
+        "properties": {
+          "method": { "type": "string" },
+          "path": {
+            "type": "string",
+            "description": "Path with the query string stripped; resource entry/tile paths collapse to the resource type"
+          },
+          "count": { "type": "integer" },
+          "totalMs": {
+            "type": "number",
+            "description": "Milliseconds, summed across all requests"
+          },
+          "maxMs": { "type": "number", "description": "Milliseconds, slowest single request" },
+          "errorCount": { "type": "integer", "description": "Responses with status >= 400" },
+          "totalBytes": {
+            "type": "number",
+            "description": "Summed response Content-Length across responses that declared one"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time of the most recent request"
+          }
+        }
+      },
+      "ProfileType": {
+        "type": "string",
+        "enum": ["cpu", "heap", "files"]
+      },
+      "ProfileListResponse": {
+        "type": "object",
+        "required": ["running", "profiles"],
+        "properties": {
+          "running": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/RunningCapture" }],
+            "description": "The capture in progress, or null"
+          },
+          "profiles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProfileListEntry" }
+          }
+        }
+      },
+      "RunningCapture": {
+        "type": "object",
+        "required": ["id", "type", "startedAt", "durationSeconds", "remainingSeconds"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/ProfileType" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "durationSeconds": { "type": "number" },
+          "remainingSeconds": { "type": "number" }
+        }
+      },
+      "ProfileListEntry": {
+        "type": "object",
+        "required": ["id", "type", "capturedAt", "durationMs", "rawSizeBytes"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/ProfileType" },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "number" },
+          "rawSizeBytes": { "type": "number" }
+        }
+      },
+      "ProfileReport": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/CpuReport" },
+          { "$ref": "#/components/schemas/HeapReport" },
+          { "$ref": "#/components/schemas/FilesReport" }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "cpu": "#/components/schemas/CpuReport",
+            "heap": "#/components/schemas/HeapReport",
+            "files": "#/components/schemas/FilesReport"
+          }
+        }
+      },
+      "CpuReport": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "capturedAt",
+          "durationMs",
+          "samplingIntervalUs",
+          "totalTimeMs",
+          "buckets"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["cpu"] },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "number" },
+          "samplingIntervalUs": { "type": "number" },
+          "totalTimeMs": { "type": "number" },
+          "buckets": {
+            "type": "array",
+            "description": "Self CPU time attributed per plugin/component, largest first",
+            "items": { "$ref": "#/components/schemas/CpuBucket" }
+          },
+          "flame": {
+            "allOf": [{ "$ref": "#/components/schemas/FlameNode" }],
+            "description": "Aggregated call tree (values in integer microseconds); absent when the capture had no samples"
+          }
+        }
+      },
+      "CpuBucket": {
+        "type": "object",
+        "required": ["name", "selfTimeMs", "percent"],
+        "properties": {
+          "name": { "type": "string" },
+          "selfTimeMs": { "type": "number" },
+          "percent": { "type": "number" },
+          "topFunctions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CpuTopFunction" }
+          }
+        }
+      },
+      "CpuTopFunction": {
+        "type": "object",
+        "required": ["name", "url", "selfTimeMs"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "selfTimeMs": { "type": "number" }
+        }
+      },
+      "HeapReport": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "capturedAt",
+          "durationMs",
+          "samplingIntervalBytes",
+          "totalBytes",
+          "buckets"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["heap"] },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "number" },
+          "samplingIntervalBytes": { "type": "number" },
+          "totalBytes": { "type": "number" },
+          "buckets": {
+            "type": "array",
+            "description": "Sampled allocation bytes attributed per plugin/component, largest first",
+            "items": { "$ref": "#/components/schemas/HeapBucket" }
+          },
+          "flame": {
+            "allOf": [{ "$ref": "#/components/schemas/FlameNode" }],
+            "description": "Aggregated allocation tree (values in bytes); absent when nothing was sampled"
+          }
+        }
+      },
+      "HeapBucket": {
+        "type": "object",
+        "required": ["name", "selfBytes", "percent"],
+        "properties": {
+          "name": { "type": "string" },
+          "selfBytes": { "type": "number" },
+          "percent": { "type": "number" },
+          "topFunctions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/HeapTopFunction" }
+          }
+        }
+      },
+      "HeapTopFunction": {
+        "type": "object",
+        "required": ["name", "url", "selfBytes"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "selfBytes": { "type": "number" }
+        }
+      },
+      "FlameNode": {
+        "type": "object",
+        "required": ["name", "bucket", "self", "total"],
+        "description": "One frame of the aggregated call tree rendered as a flame graph. `self`/`total` are integer microseconds for CPU reports and bytes for heap reports. Subtrees below 0.1% of the root total are pruned; their cost stays in every ancestor's `total`.",
+        "properties": {
+          "name": { "type": "string" },
+          "bucket": {
+            "type": "string",
+            "description": "Attribution bucket of this frame, same names as the report buckets"
+          },
+          "self": { "type": "integer" },
+          "total": { "type": "integer" },
+          "url": { "type": "string" },
+          "children": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FlameNode" }
+          }
+        }
+      },
+      "FilesReport": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "capturedAt",
+          "durationMs",
+          "sampleIntervalSeconds",
+          "sampleCount",
+          "totals",
+          "files",
+          "databases",
+          "attribution"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["files"] },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "number" },
+          "sampleIntervalSeconds": { "type": "number" },
+          "sampleCount": { "type": "integer" },
+          "dataRoot": {
+            "type": "string",
+            "description": "Signal K config root the paths were attributed against"
+          },
+          "totals": {
+            "type": "object",
+            "required": ["writeBytes", "readBytes", "writeBytesPerSecond", "readBytesPerSecond"],
+            "description": "Process-wide storage I/O over the capture window, from /proc/self/io",
+            "properties": {
+              "writeBytes": { "type": "number" },
+              "readBytes": { "type": "number" },
+              "writeBytesPerSecond": { "type": "number" },
+              "readBytesPerSecond": { "type": "number" }
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FileActivityFile" }
+          },
+          "databases": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SqliteActivity" }
+          },
+          "attribution": {
+            "type": "array",
+            "description": "Estimated write volume per bucket vs the process total; the '(unattributed)' row is bytes the per-file model could not explain",
+            "items": { "$ref": "#/components/schemas/FilesAttributionRow" }
+          }
+        }
+      },
+      "FileActivityFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "bucket",
+          "mode",
+          "kind",
+          "sizeBytes",
+          "growthBytes",
+          "mtimeChanges",
+          "inPlaceRewrites"
+        ],
+        "description": "One file watched during a file-activity capture — an open file descriptor of the server process, or the -wal/-shm sibling of an open SQLite database",
+        "properties": {
+          "path": { "type": "string" },
+          "bucket": {
+            "type": "string",
+            "description": "Attribution bucket, same names as the report buckets"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Open mode observed: read, write, read-write, or append; 'watched' for a discovered sibling never seen open"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["file", "sqlite-db", "sqlite-wal", "sqlite-shm"]
+          },
+          "sizeBytes": { "type": "number", "description": "Bytes at the end of the capture" },
+          "growthBytes": {
+            "type": "number",
+            "description": "Bytes of growth summed across samples (truncations don't subtract)"
+          },
+          "mtimeChanges": {
+            "type": "integer",
+            "description": "Samples in which the file's mtime advanced"
+          },
+          "inPlaceRewrites": {
+            "type": "integer",
+            "description": "Samples in which mtime advanced with no size change — in-place rewrite churn (e.g. a wrapped SQLite WAL)"
+          }
+        }
+      },
+      "SqliteActivity": {
+        "type": "object",
+        "required": [
+          "path",
+          "bucket",
+          "pageSize",
+          "commits",
+          "commitsPerSecond",
+          "framesWritten",
+          "checkpoints",
+          "estimatedWriteBytes",
+          "notes"
+        ],
+        "description": "Per-database write activity read passively from the SQLite WAL-index (-shm) header",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Main database path; its -wal/-shm siblings are folded into this row"
+          },
+          "bucket": { "type": "string" },
+          "pageSize": { "type": "number", "description": "Bytes" },
+          "commits": {
+            "type": "integer",
+            "description": "Transactions committed during the capture"
+          },
+          "commitsPerSecond": { "type": "number" },
+          "framesWritten": {
+            "type": "integer",
+            "description": "WAL frames appended during the capture"
+          },
+          "checkpoints": {
+            "type": "integer",
+            "description": "WAL checkpoints observed (frame counter reset)"
+          },
+          "estimatedWriteBytes": {
+            "type": "number",
+            "description": "frames × (page + 24-byte frame header) + checkpointed pages — a floor that excludes fsync amplification"
+          },
+          "notes": {
+            "type": "array",
+            "description": "Human-readable findings, e.g. a sustained high commit rate",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "FilesAttributionRow": {
+        "type": "object",
+        "required": ["name", "estimatedWriteBytes", "percent"],
+        "properties": {
+          "name": { "type": "string" },
+          "estimatedWriteBytes": { "type": "number" },
+          "percent": {
+            "type": "number",
+            "description": "Share of the process-wide total; the '(unattributed)' row closes the gap"
+          }
+        }
+      }
+    }
+  }
+}
