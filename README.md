@@ -38,6 +38,15 @@ modifications, no changes to other plugins.**
   errors, bytes, last seen), capped at 1000 paths with the least-recently-seen
   dropped first — both limits configurable (0 = unlimited), and recording can be
   switched off entirely — sortable, searchable tables in the webapp.
+- **Load testing**: a **delta publishing** load generator on its own page — your browser
+  publishes random values to `testing.<n>` paths over the server's own websocket stream
+  at a configured rate, so you can find the rate at which the event loop starts to
+  degrade. Configurable duration, path count, **delta rate**, and **deltas per message**
+  — batching divides the delta rate into the message rate, holding the load constant
+  while cutting envelope overhead — with live stats in both units (achieved deltas/s and
+  messages/s, bytes, skipped) and an optional CPU or memory profile
+  captured across the run, so a saturated event loop comes with the profile that
+  explains it.
 - **Webapp**: live metric tiles, one-click "Profile for 30s", an in-browser **flame
   graph** (click to zoom, colored by plugin) for both CPU and allocation reports,
   per-plugin table with share bars and expandable top functions, file activity reports

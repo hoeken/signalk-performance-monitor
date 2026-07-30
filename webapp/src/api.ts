@@ -19,6 +19,10 @@ export class ApiError extends Error {
   }
 }
 
+/** Auth failures are reported once, by the app shell's banner. */
+export const isAuthError = (error: unknown): boolean =>
+  error instanceof ApiError && (error.status === 401 || error.status === 403)
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',

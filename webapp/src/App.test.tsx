@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProfileListResponse } from '../../src/shared/types'
@@ -69,6 +69,8 @@ describe('App', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    // The nav bar navigates by hash; jsdom keeps it between tests.
+    window.location.hash = ''
   })
 
   it('shows live metrics and the stored profile list', async () => {
@@ -174,6 +176,28 @@ describe('App', () => {
     expect(init.body).toBe(file)
 
     expect(await screen.findByRole('heading', { name: 'Report' })).toBeInTheDocument()
+  })
+
+  it('swaps pages from the nav bar and marks the current one', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    // Scoped to the nav: page bodies link to each other by name too.
+    const nav = () => within(screen.getByRole('navigation', { name: 'Pages' }))
+
+    expect(await screen.findByRole('heading', { name: 'Profiling' })).toBeInTheDocument()
+    expect(nav().getByRole('link', { name: 'Monitor' })).toHaveAttribute('aria-current', 'page')
+
+    await user.click(nav().getByRole('link', { name: 'Load Testing' }))
+
+    expect(await screen.findByRole('button', { name: 'Start test' })).toBeInTheDocument()
+    expect(nav().getByRole('link', { name: 'Load Testing' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.queryByRole('heading', { name: 'Profiling' })).not.toBeInTheDocument()
+
+    await user.click(nav().getByRole('link', { name: 'Monitor' }))
+    expect(await screen.findByRole('heading', { name: 'Profiling' })).toBeInTheDocument()
   })
 
   it('links raw downloads to the raw profile route', async () => {
